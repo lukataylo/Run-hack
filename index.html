@@ -1666,6 +1666,7 @@ $('btn-start').onclick = async () => {
   impacts = []; cueLog = []; recBuf = []; recording = false; lastRecT = -Infinity;
   // stale pre-run samples must not seed the first windows (either sensor)
   try { head?.reset?.(); } catch {}
+  try { levelRef = JSON.parse(localStorage.getItem('levelRef') || 'null') || levelRef; } catch {}
   try { phone?.reset?.(); } catch {}
   lastKmSpoken = 0; praiseHighSince = 0;
   $('btn-rec').classList.remove('on');
@@ -1938,10 +1939,15 @@ $('cal-setlevel').onclick = () => {
     // phone in your hand has no meaningful posture neutral.
     const t = rawTilt();
     if (t) {
+      levelRef = t; // the RUNNING session reads this variable — saving only to
+                    // localStorage meant calibration did nothing until relaunch
       localStorage.setItem('levelRef', JSON.stringify(t));
       $('cal-axes-note').textContent = mode === 'ears'
-        ? `Level saved (pitch ${t.pitch.toFixed(0)}°, roll ${t.roll.toFixed(0)}°) — Posture guard can use it now.`
-        : `Carry orientation saved (pitch ${t.pitch.toFixed(0)}°, roll ${t.roll.toFixed(0)}°) — this only zeroes the display.`;
+        ? `Level saved (${t.pitch.toFixed(0)}°). Look at your feet — posture should drop.`
+        : `Saved (${t.pitch.toFixed(0)}°) — zeroes this display.`;
+    } else {
+      // a silent no-op here is why "does it save?" was even a question
+      $('cal-axes-note').textContent = 'Nothing streaming — pods in? Then tap again.';
     }
   } catch {}
 };
