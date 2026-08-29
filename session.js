@@ -361,6 +361,8 @@ function injectStyles() {
   .si-hero-rings{position:absolute;right:-40px;top:50%;transform:translateY(-50%);
     pointer-events:none;}
   .si-hero-pod{position:absolute;right:14px;top:50%;transform:translateY(-50%);opacity:.95;}
+  .si-pod3d{width:104px;height:104px;display:flex;align-items:center;justify-content:center;}
+  .si-pod3d canvas{width:100%;height:100%;}
   .si-row{display:flex;gap:12px;}
   .si-row>.si-card{flex:1;min-width:0;}
   .si-big{font-size:30px;font-weight:700;letter-spacing:-1px;line-height:1.05;}
@@ -410,9 +412,10 @@ function ringsSVG() {
   return `<svg class="si-hero-rings" width="220" height="220" viewBox="0 0 220 220">${c}</svg>`;
 }
 
-// Small AirPod silhouette, hand-drawn path.
+// Small AirPod silhouette — placeholder/fallback while (or if) the 3D model
+// doesn't mount; pods3d.mount hides anything marked data-pods-ph.
 function podSVG() {
-  return `<svg class="si-hero-pod" width="54" height="72" viewBox="0 0 54 72" fill="none">
+  return `<svg data-pods-ph width="54" height="72" viewBox="0 0 54 72" fill="none">
     <path d="M14 6 C14 -1 40 -1 40 10 L40 26 C40 34 33 37 28 36 L28 60 C28 68 16 68 16 60 L16 34 C15 30 14 22 14 6 Z"
       fill="#fff" opacity="0.95"/>
     <ellipse cx="36" cy="14" rx="5" ry="7" fill="rgba(0,0,0,0.12)"/>
@@ -453,7 +456,7 @@ export function renderInsights(containerEl, run, prevRun) {
   containerEl.innerHTML = `
   <div class="si-root">
     <div class="si-hero ${clean ? 'si-hero-clean' : ''}">
-      ${ringsSVG()}${podSVG()}
+      ${ringsSVG()}<div class="si-hero-pod si-pod3d">${podSVG()}</div>
       <div class="si-eyebrow">${clean ? 'CLEAN RUN' : meta.eyebrow}</div>
       <h2 class="si-hero-headline">${clean ? 'Clean run. Keep doing exactly this.' : meta.headline}</h2>
     </div>
@@ -559,4 +562,8 @@ export function renderInsights(containerEl, run, prevRun) {
     });
     histEl.appendChild(row);
   });
+
+  // 3D pods in the hero — decorative; SVG placeholder stays if this fails
+  const podEl = containerEl.querySelector('.si-pod3d');
+  if (podEl) import('./pods3d.js').then((m) => m.mount?.(podEl)).catch(() => {});
 }

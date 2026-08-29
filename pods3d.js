@@ -35,12 +35,17 @@ export function mount(el) {
   scene.add(group);
 
   const finish = () => {
-    const ph = el.querySelector('#pods-ph');
-    if (ph) ph.style.display = 'none';
+    el.querySelectorAll('#pods-ph,[data-pods-ph]').forEach((ph) => { ph.style.display = 'none'; });
     el.appendChild(renderer.domElement);
     // slow oscillating rotation — setInterval, never rAF (throttled webviews)
     let t = 0;
-    setInterval(() => {
+    const iv = setInterval(() => {
+      // self-dispose when the canvas leaves the DOM (Insights re-renders its hero)
+      if (!renderer.domElement.isConnected) {
+        clearInterval(iv);
+        renderer.dispose();
+        return;
+      }
       t += 0.03;
       group.rotation.y = 0.45 * Math.sin(t * 0.5);
       group.rotation.x = 0.12 * Math.sin(t * 0.33) - 0.1;
@@ -55,6 +60,11 @@ export function mount(el) {
     }).catch(rej);
   }).then((gltf) => {
     const m = gltf.scene;
+    // STL-derived GLB carries only a flat PBR white; apply the house finish
+    const white = new THREE.MeshPhysicalMaterial({
+      color: 0xf6f6f4, roughness: 0.28, clearcoat: 1, clearcoatRoughness: 0.12,
+    });
+    m.traverse((o) => { if (o.isMesh) o.material = white; });
     const box = new THREE.Box3().setFromObject(m);
     const size = box.getSize(new THREE.Vector3()).length() || 1;
     m.scale.setScalar(3.2 / size);
