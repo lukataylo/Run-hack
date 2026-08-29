@@ -567,6 +567,10 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
       <button data-p="sassy">Sassy</button>
     </div>
   </div>
+  <div class="card set-row" id="row-voicetest" style="cursor:pointer">
+    <div style="flex:1"><div class="lbl">Test voice</div><div class="note" id="voicetest-note">Tap to hear the coach and see which audio path spoke</div></div>
+    <svg class="ic" viewBox="0 0 24 24" style="color:var(--dim)"><path d="M4 10v4h3l4 4V6L7 10H4z"/><path d="M15 9a4.5 4.5 0 0 1 0 6"/></svg>
+  </div>
   <div class="card set-row" id="row-calib" style="cursor:pointer">
     <div style="flex:1"><div class="lbl">Calibration</div><div class="note" id="calib-row-note">Sanity-check the phone sensor chain</div></div>
     <svg class="ic" viewBox="0 0 24 24" style="color:var(--dim)"><path d="m9 6 6 6-6 6"/></svg>
@@ -619,7 +623,7 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
       </div>
       <div id="cal-buds" class="num"><span id="cal-l">L</span><span id="cal-r">R</span></div>
     </div>
-    <div class="note" id="cal-conn-note" style="margin-top:10px">Hold your phone as you would on a run.</div>
+    <div class="note" id="cal-conn-note" style="margin-top:10px">Hold it like you run with it.</div>
     <!-- iOS only hands out motion inside a user gesture; this button is that gesture -->
     <button id="cal-allow" hidden style="margin-top:10px;width:100%;padding:12px 0;border-radius:12px;
       background:var(--grad);color:#fff;font-weight:800;font-size:14px">Motion access needed — tap to allow</button>
@@ -644,8 +648,8 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
       <button id="cal-axes" style="flex:1;padding:12px 0;border-radius:12px;
         background:var(--card2);color:var(--dim);font-weight:700;font-size:13px">Axes 2/8</button>
     </div>
-    <div class="note" id="cal-axes-note" style="margin-top:6px">If turns or tilts render on the wrong axis, tap Axes until the head copies you — it sticks.</div>
-    <div class="note" id="cal-3d-note">Tilt and turn your phone — the model should follow instantly. Set level zeroes the display to your carry position.</div>
+    <div class="note" id="cal-axes-note" style="margin-top:6px">Wrong axis? Tap Axes until it copies you.</div>
+    <div class="note" id="cal-3d-note">Tilt and turn — it should follow.</div>
   </div>
 
   <div class="card" id="cal-gauges-card" style="margin-top:12px;display:none">
@@ -666,7 +670,7 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
         <div class="eyebrow" style="margin-top:10px">Roll</div><div class="num" id="cal-roll" style="font-size:26px">--°</div>
       </div>
     </div>
-    <div class="note" id="cal-gauges-note">Tilt and turn the phone — the dot should follow instantly.</div>
+    <div class="note" id="cal-gauges-note"></div>
   </div>
 
   <div class="card" style="margin-top:12px">
@@ -683,13 +687,13 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
       </div>
     </div>
     <div id="cal-jumps" class="sub" style="margin-top:8px"></div>
-    <div class="note" id="cal-steps-note">March on the spot with the phone in hand — every footfall should count. Hop once and we should catch the landing.</div>
+    <div class="note" id="cal-steps-note">March on the spot. Hop to test impact.</div>
   </div>
 
   <!-- sway is an EARS-mode metric only: from a hand, arm swing IS the lateral
        motion, so the number would be meaningless. Hidden in phone mode. -->
   <div class="card set-row" id="cal-sway-row" style="margin-top:12px">
-    <div style="flex:1"><div class="lbl">Sway</div><div class="note">Shake your head side to side and watch this rise.</div></div>
+    <div style="flex:1"><div class="lbl">Sway</div><div class="note">Shake your head — this rises.</div></div>
     <span class="num" id="cal-sway" style="font-size:24px">--</span>
   </div>
   <div class="note" id="cal-foot-note" style="margin-top:10px;color:var(--dim);font-size:11px">Follows your sensor mode —
@@ -720,14 +724,15 @@ import { analyze, Coach, verticalSeries, swayOf, CONFIG, GoalTracker } from './c
 const $ = (id) => document.getElementById(id);
 
 /* ---------- optional modules: a missing/broken module never takes the app down ---------- */
-const head = await import('./head.js').catch(() => null);
-const phone = await import('./phone.js').catch(() => null);
-const voice = await import('./voice.js').catch(() => null);
-const botMod = await import('./bot.js').catch(() => null);
-const musicMod = await import('./music.js').catch(() => null);
-const sessionMod = await import('./session.js').catch(() => null);
-const persona = await import('./persona.js').catch(() => null);
-const syncMod = await import('./sync.js').catch(() => null);
+// PARALLEL, not sequential: these were eight awaits in a row, which meant
+// eight network round trips before any button handler attached — on a phone
+// the app sat looking ready with every tap dead. One slow module now costs
+// only its own time, not the sum.
+const [head, phone, voice, botMod, musicMod, sessionMod, persona, syncMod] =
+  await Promise.all([
+    './head.js', './phone.js', './voice.js', './bot.js',
+    './music.js', './session.js', './persona.js', './sync.js',
+  ].map((m) => import(m).catch(() => null)));
 
 /* ---------- web-first: PWA install + offline + cross-device sync ---------- */
 // Running inside our own WKWebView shell? Then it is already "installed" and
@@ -921,6 +926,11 @@ initSyncAndLive();
 // force hand mode on the web rather than offer a sensor we cannot read.
 let mode = localStorage.getItem('mode') || 'hand';
 if (mode === 'ears' && !inNativeShell) mode = 'hand';
+// Inside the shell the AirPods stream starts flowing on page load with no
+// permission needed, while phone motion needs a tap — so a first launch that
+// defaults to Phone shows a dim dot despite live AirPods ("doesn't turn
+// green"). Default to ears in the shell unless the user explicitly chose.
+if (inNativeShell && !localStorage.getItem('mode')) mode = 'ears';
 // a tapped message on the Home header holds the status line for a few seconds
 let connNotice = 0;
 let voiceOn = true, musicOn = false; // voiceOn deliberately unpersisted
@@ -1071,26 +1081,22 @@ function paintCalibCopy() {
   const ears = mode === 'ears';
   $('cal-3d-title').textContent = ears ? 'Head orientation' : 'Phone orientation';
   $('cal-conn-note').textContent = ears
-    ? 'Pop one bud out to watch the stream switch. Automatic Ear Detection must be off.'
-    : 'Hold your phone as you would on a run.';
-  $('cal-3d-note').textContent = ears
-    ? 'Full AirPods orientation — pitch, roll and yaw, live. Set level zeroes it to your natural gaze.'
-    : 'Tilt and turn your phone — the model should follow instantly. Set level saves your carry orientation; it only zeroes this display.';
+    ? 'Turn Automatic Ear Detection off.'
+    : 'Hold it like you run with it.';
+  $('cal-3d-note').textContent = 'Tilt and turn — it should follow.';
   $('cal-setlevel').textContent = ears
     ? 'Set level — look straight ahead, then tap'
     : 'Set level — hold your carry position, then tap';
   $('cal-gauges-note').textContent = ears
     ? 'Nod, tilt, look around — the dot should follow instantly.'
-    : 'Tilt and turn the phone — the dot should follow instantly.';
+    : '';
   $('cal-steps-note').textContent = ears
     ? 'March in place — every footfall should count. Hop once and we should catch the landing.'
-    : 'March on the spot with the phone in hand — every footfall should count. Hop once and we should catch the landing.';
+    : 'March on the spot. Hop to test impact.';
   // sway: ears only. From a hand, arm swing IS the lateral motion (spec §7).
   $('cal-sway-row').hidden = !ears;
   $('cal-buds').hidden = !ears;
-  $('cal-foot-note').textContent = ears
-    ? 'Ears mode: the AirPods stream from the native app feeds this screen.'
-    : 'Phone mode: this screen reads the phone motion buffer. Switch sensor mode on the Profile screen.';
+  $('cal-foot-note').textContent = ears ? 'Reading: AirPods' : 'Reading: phone motion';
 }
 for (const b of document.querySelectorAll('#mode-seg button'))
   b.onclick = () => {
@@ -1911,6 +1917,43 @@ function openCalib() {
   }
 }
 $('row-calib').onclick = openCalib;
+
+// Form score under 40, sustained: the coach gets sassy about it regardless of
+// personality setting (per the user). 10 s persistence so one bad window
+// doesn't trigger it; 90 s cooldown; corrective cues still win.
+let lowScoreSince = 0, lastLowScoreSassAt = 0;
+function lowScoreSass(m) {
+  if (!voiceOn || !running || !m?.moving) { lowScoreSince = 0; return; }
+  const now = Date.now();
+  if (!(m.score < 40)) { lowScoreSince = 0; return; }
+  if (!lowScoreSince) { lowScoreSince = now; return; }
+  if (now - lowScoreSince < 10000) return;
+  if (now - lastLowScoreSassAt < 90000) return;
+  if (now - runT0 < 30000 || now - lastCueWallT < 8000 || voice?.isBusy?.()) return;
+  const table = persona?.SASSY?.dig;
+  if (!table?.length) return;
+  const line = table[Math.floor(Math.random() * table.length)];
+  lastLowScoreSassAt = now;
+  lowScoreSince = 0;
+  speak(line.text, line.clip);
+}
+
+// voice self-test: speaks in-gesture and reports which output path actually
+// played, so "voice isn't working" becomes a diagnosable answer
+$('row-voicetest').onclick = () => {
+  try { voice?.unlock?.(); } catch {}
+  const line = persona?.pick?.('greet') || { text: 'Voice check. All good.' };
+  try { voice?.say?.(line.text, line.clip); } catch {}
+  $('voicetest-note').textContent = 'Speaking…';
+  setTimeout(() => {
+    const p = voice?.lastPath?.();
+    $('voicetest-note').textContent = p === 'clip' ? 'Spoke via ElevenLabs clip'
+      : p === 'elevenlabs' ? 'Spoke via ElevenLabs (server)'
+      : p === 'native' ? 'Spoke via the iOS voice bridge'
+      : p === 'device' ? 'Spoke via the device voice (fallback)'
+      : 'Nothing played — is the ringer on silent? Volume up?';
+  }, 1800);
+};
 $('cal-allow').onclick = async () => {
   const ok = await startPhone();
   $('cal-allow').hidden = ok;
@@ -2206,6 +2249,7 @@ setInterval(() => {
 
     // motivation mode: it reads the coach clocks the update above just set
     try { motivateTick(m); } catch {}
+    try { lowScoreSass(m); } catch {}
 
     // goal run (all optional): tick the tracker + voice, stamp onPace into the
     // metrics, THEN log the timeline tick so session.tick sees goalOnPace

@@ -7,6 +7,8 @@ const tried = {};       // fault -> true once we've attempted a preload
 let unlocked = false;
 let voice = null;       // chosen speechSynthesis voice
 let currentClip = null; // last Audio element say() started (busy while playing)
+let _lastPath = null;    // which output actually spoke last: clip|elevenlabs|native|device
+export function lastPath() { return _lastPath; }
 let bridgeUntil = 0;    // native bridge has no completion callback — assume busy until this wall-clock time
 
 const FAULTS = ['cadence', 'bounce', 'asymmetry', 'sway', 'posture'];
@@ -78,6 +80,7 @@ export function say(text, fault) {
       clip.currentTime = 0;
       const p = clip.play();
       currentClip = clip;
+      _lastPath = 'clip';
       // autoplay refusal -> same fallback order as no-clip: bridge, then TTS
       if (p && p.catch) p.catch(() => bridgeOrSpeak(text));
       return;
@@ -95,6 +98,7 @@ export function say(text, fault) {
       .then((b) => {
         const a = new Audio(URL.createObjectURL(b));
         currentClip = a;
+        _lastPath = 'elevenlabs';
         bridgeUntil = 0;
         return a.play();
       })
@@ -112,6 +116,7 @@ function bridgeOrSpeak(text) {
     const h = window.webkit?.messageHandlers?.say;
     if (h) {
       h.postMessage(text);
+      _lastPath = 'native';
       // the bridge is fire-and-forget: no completion callback, so assume busy
       // for a fixed spell. 2500 ms is a calibration knob (~one short line).
       bridgeUntil = Date.now() + 2500;
@@ -135,7 +140,8 @@ export function isBusy() {
 }
 
 function speak(text) {
-  if (!('speechSynthesis' in window)) return;
+  if (!('speechSynthesis' in window)) { _lastPath = 'none'; return; }
+  _lastPath = 'device';
   try {
     pickVoice();
     const u = new SpeechSynthesisUtterance(text);

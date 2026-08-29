@@ -3,7 +3,7 @@
 // for the page (so a redeploy is picked up), cache-first for static assets.
 // Bumping this purges every old cache on activate. It must change whenever the
 // caching STRATEGY changes; app code no longer depends on it (see below).
-const CACHE = 'formcoach-v2';
+const CACHE = 'formcoach-v3';
 
 // The app shell. Audio and vendor blobs are cached lazily on first use so the
 // install is fast; a missing clip degrades to the device voice by design.
@@ -49,12 +49,21 @@ self.addEventListener('fetch', (e) => {
   const isCode = url.pathname.endsWith('.js') || url.pathname.endsWith('.webmanifest');
 
   if (isDoc || (isCode && !immutable)) {
+    // Stale-while-revalidate: serve the cached copy INSTANTLY and refresh it
+    // in the background. Pure network-first made every launch pay full
+    // round-trips for the page plus all modules — reported as "takes a while
+    // to load, buttons not clicking". Doc and code follow the SAME strategy,
+    // so a launch always runs a matching pair (last visit's, at worst), and
+    // the next launch after a deploy runs the new one.
     e.respondWith(
-      fetch(request).then((r) => {
-        const copy = r.clone();
-        caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {});
-        return r;
-      }).catch(() => caches.match(request).then((r) => r || (isDoc ? caches.match('/index.html') : undefined)))
+      caches.match(request).then((hit) => {
+        const refresh = fetch(request).then((r) => {
+          const copy = r.clone();
+          caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {});
+          return r;
+        }).catch(() => hit || (isDoc ? caches.match('/index.html') : undefined));
+        return hit || refresh;
+      })
     );
     return;
   }
