@@ -600,6 +600,275 @@ function drawLineChart(canvas, rawPts, color) {
   ctx.stroke();
 }
 
+// ---------- "Did the coaching work?" (response-to-cue) ----------
+
+// Which timeline series each fault is about, and which direction is BETTER.
+// posture has two possible sources: the head-orientation metric (wobble) or the
+// app's calibrated tilt deviation (tiltDev) — take whichever the run recorded.
+const CUE_METRIC = {
+  cadence:   { keys: ['cadence'], goodWhenLower: false, label: 'cadence',   unit: 'spm' },
+  bounce:    { keys: ['bounce'],  goodWhenLower: true,  label: 'bounce',    unit: 'm/s²' },
+  asymmetry: { keys: ['asym'],    goodWhenLower: true,  label: 'asymmetry', unit: '' },
+  sway:      { keys: ['sway'],    goodWhenLower: true,  label: 'head sway', unit: '' },
+  posture:   { keys: ['wobble', 'tiltDev'], goodWhenLower: true, label: 'posture', unit: '°' },
+};
+
+// Windows, in seconds around the cue. The 30–90 s response window is the
+// motor-learning consolidation window already cited in COACHING.md: a gait
+// correction takes ~300 strides (~90 s at 170–200 spm) to land, so measuring
+// the first 30 s would measure the runner reacting, not the correction holding.
+export const COACHABILITY = {
+  BASELINE_S: 60,    // window before the cue: what the runner was doing
+  AFTER_S: 120,      // window drawn after the cue
+  RESP_FROM_S: 30,   // consolidation window opens
+  RESP_TO_S: 90,     // consolidation window closes (~300 strides)
+  MIN_PTS: 5,        // fewer samples than this either side is not evidence
+  MIN_PCT: 1.5,      // below this the response reads as "no change", not a win
+};
+
+const meanV = (a) => a.reduce((s, p) => s + p.v, 0) / a.length;
+
+// PURE — no DOM, no globals. Score one cue's aftermath against its own
+// baseline. Returns null when this run cannot answer the question at all
+// (unknown fault, no timestamp, the cued metric was never recorded).
+// deltaPct is signed in the IMPROVING direction for that fault, so positive
+// always means "better" regardless of which way the raw metric moved.
+export function scoreCueResponse(timeline, cue) {
+  const meta = cue && CUE_METRIC[cue.fault];
+  if (!meta) return null;                                    // unknown fault: skip this cue
+  const cueT = cue && typeof cue.t === 'number' && isFinite(cue.t) ? cue.t : null;
+  if (cueT == null) return null;
+  const tl = Array.isArray(timeline) ? timeline : [];
+
+  // pick the first candidate key this run actually recorded
+  let key = null;
+  for (const k of meta.keys) {
+    if (tl.some((e) => e && typeof e[k] === 'number' && isFinite(e[k]))) { key = k; break; }
+  }
+  if (!key) return null;                                     // metric missing: skip this cue
+
+  const pts = [];
+  for (const e of tl) {
+    if (!e || typeof e.t !== 'number' || !isFinite(e.t)) continue;
+    const v = e[key];
+    if (typeof v !== 'number' || !isFinite(v)) continue;
+    pts.push({ t: e.t, v });
+  }
+  pts.sort((a, b) => a.t - b.t);
+
+  const C = COACHABILITY;
+  const before = pts.filter((p) => p.t >= cueT - C.BASELINE_S && p.t < cueT);
+  const after = pts.filter((p) => p.t >= cueT && p.t <= cueT + C.AFTER_S);
+  const resp = pts.filter((p) => p.t >= cueT + C.RESP_FROM_S && p.t <= cueT + C.RESP_TO_S);
+  const lastT = pts.length ? pts[pts.length - 1].t : cueT;
+  // "run ended": the consolidation window runs past the end of the timeline, so
+  // there is nothing to score even though there may be a trace to draw.
+  const runEnded = lastT < cueT + C.RESP_TO_S;
+
+  const base = {
+    fault: cue.fault, key, label: meta.label, unit: meta.unit,
+    goodWhenLower: meta.goodWhenLower, cueT,
+    before, after, samplesAfter: resp.length, runEnded,
+    baseMean: before.length ? meanV(before) : null,
+    baseSd: null, respMean: null, deltaPct: null, improved: false, latencyS: null,
+    scored: false,
+  };
+  if (before.length < C.MIN_PTS || resp.length < C.MIN_PTS) return base;
+
+  const baseMean = meanV(before);
+  let b2 = 0;
+  for (const p of before) b2 += (p.v - baseMean) * (p.v - baseMean);
+  const baseSd = Math.sqrt(b2 / before.length);
+  const respMean = meanV(resp);
+  const dir = meta.goodWhenLower ? -1 : 1;
+  if (!(Math.abs(baseMean) > 1e-9)) return { ...base, baseSd, respMean };
+  const deltaPct = ((respMean - baseMean) / Math.abs(baseMean)) * 100 * dir;
+  if (!Number.isFinite(deltaPct)) return { ...base, baseSd, respMean };
+  const improved = deltaPct >= C.MIN_PCT;
+
+  // Response latency: the first second after the cue at which a 15 s trailing
+  // mean has moved at least HALFWAY toward where the metric eventually settled.
+  // Only meaningful when the response actually happened.
+  let latencyS = null;
+  if (improved) {
+    const target = baseMean + 0.5 * (respMean - baseMean);
+    for (let t = cueT + 5; t <= cueT + C.AFTER_S; t++) {
+      const w = after.filter((p) => p.t > t - 15 && p.t <= t);
+      if (w.length < 4) continue;
+      if (dir * (meanV(w) - target) >= 0) { latencyS = t - cueT; break; }
+    }
+  }
+
+  return { ...base, baseSd, respMean, deltaPct, improved, latencyS, scored: true };
+}
+
+// One sentence over the card. Groups the scored cues by fault so it can say
+// which coaching is landing and which is not.
+function coachabilityLede(results) {
+  const byFault = new Map();
+  for (const r of results) {
+    if (!r || !r.scored) continue;
+    const g = byFault.get(r.fault) || { label: r.label, pct: [], lat: [] };
+    g.pct.push(r.deltaPct);
+    if (r.latencyS != null) g.lat.push(r.latencyS);
+    byFault.set(r.fault, g);
+  }
+  if (!byFault.size) {
+    return results.some((r) => r.runEnded)
+      ? 'The run ended before these cues had time to land — nothing to score yet.'
+      : 'Not enough data around these cues to score a response.';
+  }
+  const avg = (a) => a.reduce((s, x) => s + x, 0) / a.length;
+  const good = [], bad = [];
+  for (const g of byFault.values()) {
+    if (avg(g.pct) >= COACHABILITY.MIN_PCT) {
+      const secs = g.lat.length ? Math.max(5, Math.round(avg(g.lat) / 5) * 5) : null;
+      good.push(secs == null ? `You respond to ${g.label} cues.`
+        : `You respond to ${g.label} cues in about ${secs} seconds.`);
+    } else {
+      bad.push(`${g.label.charAt(0).toUpperCase() + g.label.slice(1)} cues aren't landing yet.`);
+    }
+  }
+  return [...good, ...bad].join(' ');
+}
+
+// One cue's response chart: 60 s of baseline (dim, with a mean±SD band), an
+// accent line at the cue, then 120 s of aftermath with the 30–90 s
+// consolidation window shaded. dpr-aware, sized at call time.
+function drawCueResponse(canvas, r) {
+  const { ctx, w, h } = prepCanvas(canvas);
+  ctx.clearRect(0, 0, w, h);
+  const C = COACHABILITY;
+  const pts = [...r.before, ...r.after];
+  if (!pts.length) return drawEmpty(ctx, w, h);
+
+  const t0 = r.cueT - C.BASELINE_S, t1 = r.cueT + C.AFTER_S;
+  const pad = 4;
+  const x = (t) => pad + ((t - t0) / (t1 - t0)) * (w - pad * 2);
+  let vMin = Infinity, vMax = -Infinity;
+  for (const p of pts) { if (p.v < vMin) vMin = p.v; if (p.v > vMax) vMax = p.v; }
+  if (r.baseMean != null && r.baseSd != null) {
+    vMin = Math.min(vMin, r.baseMean - r.baseSd);
+    vMax = Math.max(vMax, r.baseMean + r.baseSd);
+  }
+  const span = (vMax - vMin) || 1;
+  const y = (v) => h - pad - ((v - vMin) / span) * (h - pad * 2);
+
+  // baseline band (mean ± SD) drawn across the FULL width, not just the
+  // baseline window: the point of the card is seeing whether the trace leaves
+  // the band after the cue, which a band that stops at the cue cannot show.
+  if (r.baseMean != null && r.baseSd != null) {
+    const yTop = y(r.baseMean + r.baseSd), yBot = y(r.baseMean - r.baseSd);
+    ctx.fillStyle = 'rgba(142,142,150,0.14)';
+    ctx.fillRect(pad, Math.min(yTop, yBot), w - pad * 2, Math.abs(yBot - yTop) || 1);
+    ctx.strokeStyle = 'rgba(142,142,150,0.45)';
+    ctx.setLineDash([3, 3]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pad, y(r.baseMean));
+    ctx.lineTo(w - pad, y(r.baseMean));
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // 30–90 s consolidation window
+  const cx0 = x(r.cueT + C.RESP_FROM_S), cx1 = x(r.cueT + C.RESP_TO_S);
+  ctx.fillStyle = 'rgba(255,255,255,0.04)';
+  ctx.fillRect(cx0, pad, Math.max(1, cx1 - cx0), h - pad * 2);
+
+  // the trace: dim before the cue, coloured by the verdict after it
+  const line = (arr, color) => {
+    if (arr.length < 2) return;
+    ctx.beginPath();
+    arr.forEach((p, i) => (i ? ctx.lineTo(x(p.t), y(p.v)) : ctx.moveTo(x(p.t), y(p.v))));
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  };
+  line(r.before, '#8e8e96');
+  // bridge the gap so the line does not break at the cue
+  const bridge = r.before.length && r.after.length ? [r.before[r.before.length - 1], r.after[0]] : [];
+  const afterColor = r.improved ? '#3ddc84' : '#ff8a3d';
+  line(bridge, afterColor);
+  line(r.after, afterColor);
+
+  // the cue itself
+  ctx.strokeStyle = '#ff5b14';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x(r.cueT), pad);
+  ctx.lineTo(x(r.cueT), h - pad);
+  ctx.stroke();
+
+  if (r.runEnded) {
+    const endX = r.after.length ? x(r.after[r.after.length - 1].t) : x(r.cueT);
+    ctx.fillStyle = '#8e8e96';
+    ctx.font = '10px -apple-system, system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('run ended', Math.min(endX + 4, w - 60), pad + 11);
+  }
+}
+
+// Renders the "Did the coaching work?" card into containerEl. Standalone: safe
+// to call from a bare test page. Returns the scored results (or null when there
+// is nothing to show — zero cues means NO CARD, not an empty one).
+export function coachabilityView(containerEl, run) {
+  if (!containerEl) return null;
+  try { injectStyles(); } catch { /* no document: nothing to style */ }
+  run = run || {};
+  const cues = Array.isArray(run.cues) ? run.cues : [];
+  if (!cues.length) { containerEl.innerHTML = ''; return null; }
+
+  const tl = run.timeline || [];
+  const results = [];
+  for (const c of cues) {
+    let r = null;
+    try { r = scoreCueResponse(tl, c); } catch { r = null; }
+    if (r) results.push(r);                 // null = missing metric → cue skipped
+  }
+  if (!results.length) { containerEl.innerHTML = ''; return null; }
+
+  const chip = (r) => {
+    if (!r.scored) {
+      return `<span class="si-chip si-chip-dim">${r.runEnded ? 'run ended' : 'not enough data'}</span>`;
+    }
+    return r.improved
+      ? `<span class="si-chip si-chip-good">+${Math.round(r.deltaPct)}% better</span>`
+      : `<span class="si-chip si-chip-warn">no change</span>`;
+  };
+
+  const rows = results.map((r, i) => `
+    <div class="si-cue-row">
+      <div class="si-chart-head">
+        <div>
+          <div class="si-eyebrow">${r.label} cue · ${fmtClock(r.cueT)}</div>
+          <div class="si-cue-sub">${r.scored
+            ? `${r.baseMean.toFixed(r.key === 'cadence' ? 0 : 2)} → ${r.respMean.toFixed(r.key === 'cadence' ? 0 : 2)}${r.unit ? ' ' + r.unit : ''} over the next 30–90 s`
+            : 'Too little of the run left after this cue to score it'}</div>
+        </div>
+        ${chip(r)}
+      </div>
+      <canvas class="si-canvas si-cue-canvas" data-cue="${i}"></canvas>
+    </div>`).join('');
+
+  containerEl.innerHTML = `
+    <div class="si-card">
+      <div class="si-eyebrow">Did the coaching work?</div>
+      <div class="si-focus-text si-cue-lede">${coachabilityLede(results)}</div>
+      ${rows}
+      <div class="si-cue-note">Baseline band is the 60 s before each cue (mean ± SD).
+        Response is measured 30–90 s after — the ~300 strides a gait correction
+        needs to consolidate.</div>
+    </div>`;
+
+  results.forEach((r, i) => {
+    const c = containerEl.querySelector(`canvas[data-cue="${i}"]`);
+    if (c) { try { drawCueResponse(c, r); } catch { /* a chart must never throw */ } }
+  });
+  return results;
+}
+
 function drawEmpty(ctx, w, h) {
   ctx.fillStyle = '#8e8e96';
   ctx.font = '11px -apple-system, system-ui, sans-serif';
@@ -640,6 +909,12 @@ function injectStyles() {
   .si-chip small{font-weight:500;opacity:.8;font-size:10px;}
   .si-chip-good{color:#3ddc84;background:rgba(61,220,132,.12);}
   .si-chip-warn{color:#ff8a3d;background:rgba(255,138,61,.12);}
+  .si-chip-dim{color:#8e8e96;background:rgba(142,142,150,.12);}
+  .si-cue-lede{margin-bottom:4px;}
+  .si-cue-row{padding-top:14px;margin-top:14px;border-top:1px solid rgba(255,255,255,.06);}
+  .si-cue-sub{font-size:11px;color:#8e8e96;margin-top:2px;}
+  .si-cue-canvas{height:84px;margin-top:8px;}
+  .si-cue-note{font-size:10px;line-height:1.45;color:#8e8e96;margin-top:12px;}
   .si-canvas{width:100%;height:110px;display:block;margin-top:10px;}
   .si-axis{display:flex;justify-content:space-between;font-size:10px;color:#8e8e96;margin-top:6px;}
   .si-summary{display:flex;}
@@ -778,6 +1053,8 @@ export function renderInsights(containerEl, run, prevRun) {
       ${axis}
     </div>` : ''}
 
+    <div data-coachability></div>
+
     <div class="si-card si-summary">
       <div><div class="si-big">${typeof run.km === 'number' ? run.km.toFixed(2) : '–'}</div><div class="si-sub">km</div></div>
       <div><div class="si-big">${fmtDuration(dur)}</div><div class="si-sub">duration</div></div>
@@ -801,6 +1078,13 @@ export function renderInsights(containerEl, run, prevRun) {
   chart('impact', drawAreaChart, impactPts, '#ff5b14');
   chart('cadence', drawBarChart, cadencePts, '#ff5b14');
   if (showSway) chart('sway', drawLineChart, swayPts, '#3ddc84');
+
+  // "Did the coaching work?" — only when this run actually got cues; the view
+  // leaves the slot empty (no card) when there is nothing to answer with.
+  if (run.cues?.length) {
+    const cEl = containerEl.querySelector('[data-coachability]');
+    if (cEl) { try { coachabilityView(cEl, run); } catch { /* never blank the screen */ } }
+  }
 
   // history list
   const histEl = containerEl.querySelector('[data-history]');

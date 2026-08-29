@@ -1,5 +1,11 @@
 // replay.js — the entire test suite. `npm run check`, plain node, <1s, exit 1 on failure.
-import { analyze, Coach, CONFIG, CUES, GoalTracker } from './coach.js';
+import {
+  analyze, Coach, CONFIG, CUES, GoalTracker,
+  harmonicRatio, strideStats, headStability,
+} from './coach.js';
+// session.js is a browser module but touches document/localStorage/navigator
+// only inside functions, so its pure analysis exports import cleanly in node.
+import { analyzeFatigue, scoreCueResponse, COACHABILITY } from './session.js';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -381,6 +387,167 @@ if (existsSync(FIXTURES)) {
     if (got) { cue2 = got; break; }
   }
   check('small tilt deviation never cues posture', cue2?.fault !== 'posture');
+}
+
+// ---- harmonic ratio (Bellanca 2013 / Menz 2003) ----
+{
+  // A stride is two steps. A symmetric run puts its energy in the EVEN
+  // harmonics of stride frequency; alternating-peak asymmetry leaks it into the
+  // odd ones, so HR collapses.
+  const sym = win(genRun({ cadence: 172, durS: 14, asym: 0 }), 14, 10);
+  const asy = win(genRun({ cadence: 172, durS: 14, asym: 0.25 }), 14, 10);
+  const hrSym = harmonicRatio(sym, 172);
+  const hrAsym = harmonicRatio(asy, 172);
+  check(`harmonic ratio: symmetric ${hrSym?.toFixed(1)} ≫ 25% asymmetric ${hrAsym?.toFixed(1)}`,
+    hrSym != null && hrAsym != null && hrSym > hrAsym * 3);
+
+  // Nyquist guard: 8 × stride freq must fit under 12.5 Hz (25 Hz single-bud
+  // stream). At 210 spm the 8th harmonic is 14 Hz — unmeasurable, so: null.
+  check('harmonic ratio: null when the 8th harmonic is above Nyquist (210 spm)',
+    harmonicRatio(win(genRun({ cadence: 210, durS: 10 }), 10, 8), 210) === null);
+  // …and null for a window too short to resolve the harmonics at all
+  check('harmonic ratio: null for a sub-4 s window',
+    harmonicRatio(win(genRun({ durS: 10 }), 10, 3), 172) === null);
+  check('harmonic ratio: null for invalid cadence',
+    harmonicRatio(sym, 0) === null && harmonicRatio(sym, NaN) === null);
+
+  const m = analyze(sym, 'hand');
+  check(`analyze exposes hr (${m.hr?.toFixed(1)})`, typeof m.hr === 'number' && m.hr > 1);
+}
+
+// ---- stride-time variability (Meardon 2011) ----
+{
+  // NOTE: absolute CV here is inflated by 25 Hz quantization — these asserts
+  // deliberately test SEPARATION, not agreement with published 1–3% values.
+  let s = 7;
+  const rnd = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff - 0.5);
+  const metronome = [], jittered = [];
+  for (let i = 0; i < 40; i++) {
+    metronome.push(i * 350);              // 350 ms steps → 700 ms strides, dead even
+    jittered.push(i * 350 + 60 * rnd());  // ±30 ms of stride-time jitter
+  }
+  const a = strideStats(metronome), b = strideStats(jittered);
+  check(`strideStats: stride = alternate footfalls (${a.strideMs} ms from 350 ms steps)`,
+    Math.abs(a.strideMs - 700) < 1 && a.n === 38);
+  check(`strideStats: metronomic CV low (${a.cvPct.toFixed(2)}%) < jittered (${b.cvPct.toFixed(2)}%)`,
+    a.cvPct < 0.5 && b.cvPct > a.cvPct + 1);
+  check('strideStats: too few footfalls returns nulls, never NaN',
+    strideStats([1, 2]).cvPct === null && strideStats([]).n === 0 && strideStats(null).n === 0);
+
+  const m = analyze(win(genRun({ durS: 10 }), 10), 'hand');
+  check(`analyze exposes strideCv (${m.strideCv?.toFixed(2)}%)`,
+    typeof m.strideCv === 'number' && isFinite(m.strideCv));
+}
+
+// ---- head orientation stability (Pozzo & Berthoz 1990) ----
+{
+  const mk = (ampDeg) => {
+    const out = [];
+    for (let i = 0; i < 150; i++) {
+      const a = (ampDeg * Math.sin((2 * Math.PI * 1.4 * i) / 25) * Math.PI) / 180;
+      out.push({
+        t: i * 40, ax: 0, ay: 0, az: 0, gx: 0, gy: 0, gz: 9.81,
+        qw: Math.cos(a / 2), qx: Math.sin(a / 2), qy: 0, qz: 0, // rock about x = roll
+      });
+    }
+    return out;
+  };
+  const steady = headStability(mk(0.2));
+  const rocking = headStability(mk(12));
+  check(`headStability: rocking ${rocking?.wobbleDeg.toFixed(1)}° > steady ${steady?.wobbleDeg.toFixed(2)}°`,
+    steady != null && rocking != null && rocking.wobbleDeg > steady.wobbleDeg * 5);
+  check(`headStability: rocking past the ${CONFIG.HEAD_WOBBLE_MAX}° knob, steady well inside it`,
+    rocking.wobbleDeg > CONFIG.HEAD_WOBBLE_MAX / 2 && steady.wobbleDeg < 1);
+  check('headStability: reports the quaternion source (not the degraded gravity fallback)',
+    rocking.source === 'quaternion');
+  check('headStability: gravity fallback used when q* absent',
+    headStability(mk(12).map(({ qw, qx, qy, qz, ...rest }) => rest))?.source === 'gravity');
+  check('headStability: null on empty/short/garbage input',
+    headStability([]) === null && headStability(null) === null && headStability([{ t: 0 }]) === null);
+}
+
+// ---- run-level fatigue analysis (session.js) ----
+{
+  // deterministic ±0.5 spm measurement noise so the baseline has a real SD
+  const mkTimeline = (dropSpm, durS = 1800) => {
+    let s = 3;
+    const rnd = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff - 0.5);
+    const tl = [];
+    for (let t = 0; t <= durS; t++) {
+      tl.push({
+        t,
+        cadence: 176 - (dropSpm * t) / durS + rnd(),
+        impact: 2.4 + (0.4 * t) / durS,      // head impact drifting up
+        strideCv: 1.8 + (0.9 * t) / durS,    // stride-time CV rising
+      });
+    }
+    return tl;
+  };
+
+  const decayed = analyzeFatigue(mkTimeline(8));
+  check(`fatigue: 8 spm over 30 min → negative slope (${decayed.cadenceSlopePer10Min?.toFixed(2)} spm/10 min)`,
+    decayed.cadenceSlopePer10Min < -2 && decayed.cadenceSlopePer10Min > -3.5);
+  check(`fatigue: onset detected (${decayed.onsetS}s)`,
+    typeof decayed.onsetS === 'number' && decayed.onsetS >= 720 && decayed.onsetS <= 1800);
+  check(`fatigue: head impact drift positive (${decayed.impactDriftPct?.toFixed(1)}%)`,
+    decayed.impactDriftPct > 5);
+  check(`fatigue: stride-CV trend positive (${decayed.cvTrendPct?.toFixed(1)}%)`,
+    decayed.cvTrendPct > 5);
+
+  const flat = analyzeFatigue(mkTimeline(0));
+  check(`fatigue: flat run → ~0 slope (${flat.cadenceSlopePer10Min?.toFixed(3)})`,
+    Math.abs(flat.cadenceSlopePer10Min) < 0.2);
+  check('fatigue: flat run → null onset', flat.onsetS === null);
+
+  const shortRun = analyzeFatigue(mkTimeline(8, 400)); // under the ~12 min floor
+  check('fatigue: run under ~12 min never claims an onset', shortRun.onsetS === null);
+  check('fatigue: garbage input returns all-null, never throws',
+    analyzeFatigue(null).onsetS === null && analyzeFatigue([]).cadenceSlopePer10Min === null &&
+    analyzeFatigue([{}, null, { t: 'x' }]).cvTrendPct === null);
+  check('fatigue: pitchDropDeg null when the run never recorded head pitch',
+    flat.pitchDropDeg === null);
+}
+
+// ---- coachability scoring (pure, DOM-free) ----
+{
+  // cadence cue at t=300; the runner picks it up ~20 s later and holds it
+  const mkRun = (respond) => {
+    const tl = [];
+    for (let t = 0; t <= 600; t++) {
+      const lifted = respond && t > 320 ? 10 : 0;
+      tl.push({ t, cadence: 160 + lifted + (t % 7) * 0.1, bounce: 9 });
+    }
+    return tl;
+  };
+  const cue = { fault: 'cadence', text: CUES.cadence, t: 300 };
+
+  const good = scoreCueResponse(mkRun(true), cue);
+  check(`coachability: improvement scores positive (+${good.deltaPct?.toFixed(1)}%)`,
+    good.scored && good.improved && good.deltaPct > 5);
+  check(`coachability: latency reported (${good.latencyS}s after the cue)`,
+    good.latencyS != null && good.latencyS > 0 && good.latencyS < 60);
+
+  const flat = scoreCueResponse(mkRun(false), cue);
+  check(`coachability: no change scores ~0 (${flat.deltaPct?.toFixed(2)}%)`,
+    flat.scored && !flat.improved && Math.abs(flat.deltaPct) < COACHABILITY.MIN_PCT);
+
+  // direction flips for a "lower is better" fault
+  const bouncy = [];
+  for (let t = 0; t <= 600; t++) bouncy.push({ t, bounce: t > 320 ? 9 : 11 });
+  const softer = scoreCueResponse(bouncy, { fault: 'bounce', t: 300 });
+  check(`coachability: bounce DOWN scores positive (+${softer.deltaPct?.toFixed(1)}%)`,
+    softer.scored && softer.improved && softer.deltaPct > 5);
+
+  // a cue for a metric this run never recorded is skipped entirely
+  check('coachability: missing metric → null (cue skipped, card not broken)',
+    scoreCueResponse(mkRun(true), { fault: 'sway', t: 300 }) === null &&
+    scoreCueResponse(mkRun(true), { fault: 'nonsense', t: 300 }) === null &&
+    scoreCueResponse(mkRun(true), { fault: 'cadence' }) === null);
+
+  // run ends before the 30–90 s consolidation window closes
+  const stub = scoreCueResponse(mkRun(true).filter((e) => e.t <= 330), cue);
+  check('coachability: run ending early is flagged, not scored',
+    stub != null && stub.scored === false && stub.runEnded === true && stub.before.length > 0);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
