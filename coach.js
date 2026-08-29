@@ -16,7 +16,12 @@ export const CONFIG = {
   SWAY_CALIB_S: 60,            // moving seconds before per-runner sway threshold
   MOVING_RMS: 3,               // m/s² — below this: not running, no metrics, no cues
   // posture guard (opt-in; needs a Set-level calibration) — calibration knobs
-  TILT_DEV_DEG: 12,            // degrees off the calibrated neutral before it's a fault
+  // PITCH-ONLY by design: roll/yaw scramble when the runner changes direction,
+  // gravity pitch never does. Posture score = 100 - 3·max(0, |dev|-8), so the
+  // fault line (18°) is exactly score < 70 — calibration knobs, keep in sync.
+  TILT_DEV_DEG: 18,            // degrees of pitch off the calibrated neutral = fault (score < 70)
+  TILT_FREE_DEG: 8,            // no penalty inside this dead zone
+  TILT_PTS_PER_DEG: 3,         // score lost per degree past the dead zone
   // head orientation stability (ears mode) — CALIBRATION KNOBS.
   // Pozzo & Berthoz 1990 measured head pitch/roll held under ~7° peak-to-peak
   // during locomotion by the vestibulocollic reflex; >10° sustained is a
@@ -64,7 +69,7 @@ export const CUES = {
   asymmetry: "You're favouring one side. Even it out.",
   sway: 'Your head is rocking. Eyes forward, run tall.',
   // posture guard (opt-in mode): deviation from the CALIBRATED head level
-  posture: "Head's dropping. Chin up, run tall.",
+  posture: 'Keep looking straight.',
 };
 
 // priority order for cue selection (asymmetry ALWAYS lowest — RCT: doesn't predict injury)

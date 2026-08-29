@@ -659,11 +659,12 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
         </linearGradient></defs>
       </svg>
       <div>
-        <div class="eyebrow">Pitch</div><div class="num" id="cal-pitch" style="font-size:26px">--°</div>
-        <div class="eyebrow" style="margin-top:10px">Roll</div><div class="num" id="cal-roll" style="font-size:26px">--°</div>
+        <div class="eyebrow">Up / down</div><div class="num" id="cal-pitch" style="font-size:26px">--°</div>
+        <div class="eyebrow" style="margin-top:10px">Posture</div>
+        <div class="num" id="cal-posture" style="font-size:26px">--</div>
       </div>
     </div>
-    <div class="note" id="cal-gauges-note"></div>
+    <div class="note" id="cal-gauges-note">Look too far up or down and posture drops. Under 70, the coach speaks up.</div>
   </div>
 
   <div class="card" style="margin-top:12px">
@@ -928,7 +929,7 @@ if (inNativeShell && !localStorage.getItem('mode')) mode = 'ears';
 let connNotice = 0;
 let voiceOn = true, musicOn = false; // voiceOn deliberately unpersisted
 const motivateOn = true; // always on per the user — the voice toggle is the mute
-let postureOn = localStorage.getItem('posture') === '1';
+let postureOn = localStorage.getItem('posture') !== '0'; // auto-prompts by default
 let levelRef = null;
 try { levelRef = JSON.parse(localStorage.getItem('levelRef') || 'null'); } catch {}
 let speedK = Number(localStorage.getItem('speedK')) || CONFIG.SPEED_K;
@@ -2006,7 +2007,7 @@ function calibTick() {
       $('cal-loc-note').textContent = streaming ? 'phone in hand' : '—';
     }
     if (!streaming || !newest) {
-      $('cal-pitch').textContent = '--°'; $('cal-roll').textContent = '--°';
+      $('cal-pitch').textContent = '--°'; $('cal-posture').textContent = '--';
       $('cal-bubble').setAttribute('cx', 70); $('cal-bubble').setAttribute('cy', 70);
       $('cal-vbar').style.height = '0%';
       $('cal-peak').textContent = '-- g';
@@ -2014,23 +2015,20 @@ function calibTick() {
       return;
     }
 
-    // TILT gauges: prefer the 3D view's zeroed quaternion angles (true attitude
-    // when the shell streams q*); fall back to raw gravity pitch/roll. "Set
-    // level" zeroes both paths (calRef holds the gravity-path reference).
-    let pitch, roll;
-    const a3 = cal3d?.angles?.();
-    if (a3 && typeof newest.qw === 'number') {
-      pitch = a3.pitch; roll = a3.roll;
-    } else {
-      pitch = Math.atan2(newest.gx, Math.hypot(newest.gy, newest.gz)) * 180 / Math.PI; // sign per real-head test
-      roll = Math.atan2(newest.gy, newest.gz) * 180 / Math.PI;
-      if (calRef === null) calRef = { pitch, roll }; // set-level zero for the gravity path
-      pitch -= calRef.pitch; roll -= calRef.roll;
-    }
+    // UP/DOWN ONLY, from GRAVITY: quaternion euler angles mix in yaw, so they
+    // corrupted the readout every time the runner changed direction. Gravity
+    // pitch is heading-independent — the reason left/right was removed.
+    let pitch = Math.atan2(newest.gx, Math.hypot(newest.gy, newest.gz)) * 180 / Math.PI; // sign per real-head test
+    if (calRef === null) calRef = { pitch, roll: 0 }; // set-level zero
+    pitch -= calRef.pitch;
     $('cal-pitch').textContent = `${pitch.toFixed(0)}°`;
-    $('cal-roll').textContent = `${roll.toFixed(0)}°`;
+    // posture score: dead zone then linear loss — same maths the cue uses
+    const dev = Math.abs(pitch);
+    const pScore = Math.max(0, Math.round(100 - CONFIG.TILT_PTS_PER_DEG * Math.max(0, dev - CONFIG.TILT_FREE_DEG)));
+    $('cal-posture').textContent = String(pScore);
+    $('cal-posture').style.color = pScore >= 70 ? 'var(--good)' : pScore >= 50 ? 'var(--amber)' : 'var(--accent)';
     const px = (d) => Math.max(-45, Math.min(45, d)) / 45 * 52; // ±45° spans the target
-    $('cal-bubble').setAttribute('cx', (70 + px(roll)).toFixed(1));
+    $('cal-bubble').setAttribute('cx', 70); // vertical only
     $('cal-bubble').setAttribute('cy', (70 + px(pitch)).toFixed(1));
 
     // IMPACT & JUMP on the last 1.5 s: project a* onto gravity WITHOUT mean
@@ -2199,7 +2197,9 @@ setInterval(() => {
     if (postureOn && mode === 'ears' && levelRef && m.moving) {
       try {
         const t = rawTilt();
-        if (t) m.tiltDev = Math.hypot(t.pitch - levelRef.pitch, t.roll - levelRef.roll);
+        // pitch ONLY: roll/yaw change when the runner turns a corner and were
+        // producing false posture faults on every direction change
+        if (t) m.tiltDev = Math.abs(t.pitch - levelRef.pitch);
       } catch {}
     }
 
