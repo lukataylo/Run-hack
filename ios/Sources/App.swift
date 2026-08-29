@@ -70,6 +70,9 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
     // the app itself needs location permission before the page's
     // watchPosition can work inside a WKWebView
     let location = CLLocationManager()
+    #if targetEnvironment(simulator)
+    var simTimer: Timer? // synthetic head-motion feed, simulator demos only
+    #endif
     var firstT: TimeInterval?
     var loadedFallback = false
 
@@ -142,6 +145,36 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
     // system design; users must disable Automatic Ear Detection or the stream
     // dies when a pod leaves an ear.
     func startHeadMotion() {
+        #if targetEnvironment(simulator)
+        // The simulator has no headphone IMU. For local demos, synthesize a
+        // realistic runner at ~172 spm: vertical Gaussian-ish footfall spikes
+        // + flight arc, mild noise, and every 40 s a 10 s "looking at feet"
+        // episode so the posture demo has something to catch. Clearly demo
+        // data — never compiled into device builds.
+        guard simTimer == nil else { return }
+        var i = 0
+        simTimer = Timer.scheduledTimer(withTimeInterval: 0.04, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            i += 1
+            let t = Double(i) * 40.0
+            let stepHz = 172.0 / 60.0
+            let ph = 2 * Double.pi * stepHz * (t / 1000)
+            // vertical accel: flight-arc cosine + sharpened impact harmonic
+            let v = -3.2 * cos(ph) + 4.5 * pow(max(0, sin(ph)), 6) + Double.random(in: -0.4...0.4)
+            // posture episode: nod ~25° for 10 s out of every 40 s
+            let nod = Int(t / 1000) % 40 >= 30 ? 25.0 * Double.pi / 180 : 0
+            let g = 9.81
+            // gravity in a head frame that pitches by `nod` about the ear axis
+            let gy = -g * cos(nod), gz = -g * sin(nod)
+            let qw = cos(nod / 2), qx = sin(nod / 2)
+            let js = String(
+                format: "window.__head&&window.__head({t:%.1f,ax:%.4f,ay:%.4f,az:%.4f,gx:%.4f,gy:%.4f,gz:%.4f,loc:1,qw:%.4f,qx:%.4f,qy:0,qz:0})",
+                t, 0.3 * v, v, 0.2 * v,
+                0.3 * v, v + gy, 0.2 * v + gz, qw, qx)
+            self.web?.evaluateJavaScript(js, completionHandler: nil)
+        }
+        return
+        #endif
         guard motion.isDeviceMotionAvailable, !motion.isDeviceMotionActive else { return }
         firstT = nil
         motion.startDeviceMotionUpdates(to: .main) { [weak self] dm, _ in
