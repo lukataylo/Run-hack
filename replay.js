@@ -1,5 +1,5 @@
 // replay.js — the entire test suite. `npm run check`, plain node, <1s, exit 1 on failure.
-import { analyze, Coach, CONFIG, CUES } from './coach.js';
+import { analyze, Coach, CONFIG, CUES, GoalTracker } from './coach.js';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -260,6 +260,73 @@ const tick = (over = {}) => ({ cadence: 172, bounce: 8, impact: 1.5, asym: 0.03,
     if (cue && cue.fault === 'cadence') cadCues++;
   }
   check('warm-up strides never poison the cadence baseline (0 cues at 180 spm)', cadCues === 0);
+}
+
+// --- GoalTracker: distance + target-time goal runs ---------------------------
+{
+  // GPS branch, exactly on pace: 1 km in 300 s
+  const g = new GoalTracker(1, 300);
+  const events = [];
+  for (let s = 1; s <= 340; s++) {
+    const e = g.tick(tick(), s, s / 300);
+    if (e) events.push({ s, ...e });
+  }
+  const half = events.filter((e) => e.event === 'half');
+  const ninety = events.filter((e) => e.event === 'ninety');
+  const complete = events.filter((e) => e.event === 'complete');
+  check('goal GPS: on-pace ramp never behind', !events.some((e) => e.event === 'behind'));
+  check(`goal GPS: half fires once at 0.5×distance (${half.map((e) => e.s)})`, half.length === 1 && half[0].s === 150);
+  check(`goal GPS: ninety fires once at 0.9×distance (${ninety.map((e) => e.s)})`, ninety.length === 1 && ninety[0].s === 270);
+  check(`goal GPS: complete fires once and reports actualS (${JSON.stringify(complete)})`,
+    complete.length === 1 && complete[0].s === 300 && complete[0].actualS === 300);
+  check('goal GPS: onPace true while on the ramp', g.onPace === true);
+}
+
+{
+  // GPS branch, 20% slow: behind respects the 10 s clock and 45 s gap; the
+  // overrun boundary (goalS×1.10) silences everything after 330 s
+  const g = new GoalTracker(1, 300);
+  const events = [];
+  for (let s = 1; s <= 450; s++) {
+    const e = g.tick(tick(), s, (s / 300) * 0.8);
+    if (e) events.push({ s, ...e });
+  }
+  const behinds = events.filter((e) => e.event === 'behind').map((e) => e.s);
+  // behindKm > max(0.005, 0.05×1) from s=76; +10 continuous s → first at 85
+  check(`goal GPS: behind after 10 continuous behind-seconds (first at ${behinds[0]}s)`,
+    behinds.length >= 2 && behinds[0] === 85);
+  const gaps = behinds.slice(1).map((b, i) => b - behinds[i]);
+  check(`goal GPS: ≥45 s between behind nudges (gaps ${gaps})`, gaps.every((x) => x >= 45));
+  check('goal GPS: slow run never completes, ninety never reached', !events.some((e) => e.event === 'complete' || e.event === 'ninety'));
+  check('goal GPS: silent after goalS×1.10', !events.some((e) => e.s > 330));
+  check('goal GPS: onPace false while behind', g.onPace === false);
+}
+
+{
+  // cadence-proxy fallback (no GPS): onPace true before the baseline locks;
+  // behind needs 20 continuous below-seconds and PAUSES while not moving
+  const g = new GoalTracker(1, 600);
+  let s = 0;
+  for (let i = 0; i < CONFIG.GOAL_BASELINE_S; i++) g.tick(tick(), ++s, null); // 172 spm seeds
+  check('goal fallback: onPace true through baseline lock', g.onPace === true);
+  let early = null;
+  for (let i = 0; i < 10; i++) { const e = g.tick(tick({ cadence: 150 }), ++s, null); if (e?.event === 'behind') early = e; }
+  for (let i = 0; i < 30; i++) { const e = g.tick(tick({ moving: false, cadence: 0 }), ++s, null); if (e?.event === 'behind') early = e; }
+  check('goal fallback: no behind at 10 below-s, clock pauses while not moving', early === null && g.onPace === false);
+  let behind = null;
+  for (let i = 0; i < 12 && !behind; i++) { const e = g.tick(tick({ cadence: 150 }), ++s, null); if (e?.event === 'behind') behind = e; }
+  check('goal fallback: behind lands once 20 continuous below-seconds accrue', !!behind);
+}
+
+{
+  // cadence-fallback milestones are time-based (no GPS at all)
+  const g = new GoalTracker(1, 100);
+  const events = [];
+  for (let s = 1; s <= 130; s++) { const e = g.tick(tick(), s, null); if (e) events.push({ s, ...e }); }
+  check('goal fallback: time-based half/ninety/complete once each',
+    events.filter((e) => e.event === 'half').length === 1 &&
+    events.filter((e) => e.event === 'ninety').length === 1 &&
+    events.filter((e) => e.event === 'complete').length === 1);
 }
 
 // --- fixture replay (fixtures/ owned by Track C — skip gracefully) -----------

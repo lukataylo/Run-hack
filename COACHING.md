@@ -90,3 +90,8 @@ actionable at threshold pace.
   until validated with a deliberate-limp recording.
 - Head-mode cadence is coarser (~25 Hz single-bud stream, neck damping); the
   head's real contribution is sway.
+- Goal runs: GPS accuracy is ±10–30 m and `watchPosition` fixes arrive at
+  ~1 Hz, so 100 m goals are coarse — treat sub-400 m goals as demo-grade, and
+  timing precision is bounded by the fix cadence. When GPS is stale the goal
+  tracker falls back to a cadence proxy, which measures rhythm/effort, not
+  speed — a shortening stride at constant cadence is invisible to it.

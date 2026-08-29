@@ -47,6 +47,14 @@ const CUES = {
   'motivate-generic-2': "One step at a time is all this ever takes.",
   'motivate-generic-3': "Quietly getting it done — I see it.",
   'motivate-generic-4': "Forward is winning.",
+  // Goal-run lines (persona.js) - static milestone/behind variants; the start
+  // and complete lines are dynamic and always go through the bridge/TTS.
+  'persona-goalhalf-1':   "Halfway there. The rhythm's yours — keep it.",
+  'persona-goalhalf-2':   "That's half. Nothing to fix — carry on.",
+  'persona-goalninety-1': "Ninety percent down. Hold this to the line.",
+  'persona-goalninety-2': "Nearly there. Don't sprint it — just finish it.",
+  'persona-goalbehind-1': "You're drifting off the pace. Lift it a touch.",
+  'persona-goalbehind-2': "Behind the clock. Quicker feet, longer road eaten.",
 };
 
 await mkdir('audio', { recursive: true });

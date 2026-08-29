@@ -28,6 +28,17 @@ export const CONFIG = {
   BOUNCE_SPREAD: 4,            // m/s² past BOUNCE_MAX for full deduction
   ASYM_SPREAD: 0.15,           // past ASYM_MAX
   SWAY_SPREAD: 0.2,            // past SWAY_FALLBACK
+  // goal run (distance + target time) — additive knobs
+  GOAL_BASELINE_S: 120,        // moving ticks of cadence that lock the fallback baseline
+  GOAL_ONPACE_FRAC: 0.97,      // cadence proxy: on pace while >= 97% of own baseline
+  GOAL_BEHIND_S: 10,           // GPS branch: continuous behind-seconds before a nudge
+  GOAL_CADENCE_BEHIND_S: 20,   // cadence-proxy branch: continuous below-seconds before a nudge
+  GOAL_BEHIND_KM_MIN: 0.005,   // km — GPS behind threshold floor (GPS noise floor)
+  GOAL_BEHIND_FRAC: 0.05,      // GPS behind threshold as a fraction of the goal distance
+  GOAL_NUDGE_GAP_MS: 45000,    // minimum between two behind nudges
+  GOAL_MILESTONES: [0.5, 0.9], // half / ninety one-shots
+  GOAL_OVERRUN_FRAC: 0.10,     // silent forever past goalS * 1.10
+  GOAL_SMOOTH_TICKS: 10,       // rolling trimmed-mean window for the cadence proxy
 };
 
 export const CUES = {
@@ -340,6 +351,122 @@ export class Coach {
       this.lastCueT = tMs;
       this.lastFaultT[f] = tMs;
       return { fault: f, text: CUES[f] };
+    }
+    return null;
+  }
+}
+
+// Goal run tracker: a distance goal with a target time, armed for one run.
+// Primary signal is GPS distance (kmNow) when fixes are fresh; the fallback is
+// a cadence proxy against the runner's own locked baseline. HONESTY: cadence is
+// a rhythm/effort proxy, NOT speed — a shorter stride at the same cadence is
+// slower and the proxy cannot see it. And GPS accuracy is ±10–30 m with fixes
+// arriving at ~1 Hz from watchPosition, so 100 m goals are coarse — treat
+// sub-400 m goals as demo-grade; timing precision is bounded by fix cadence.
+export class GoalTracker {
+  constructor(goalKm, goalS) {
+    this.goalKm = goalKm;
+    this.goalS = goalS;
+    this.actualS = null;         // elapsed seconds when goalKm was reached (null if never)
+    this._onPace = true;         // before any evidence, assume on pace
+    this._cadSeed = [];          // first GOAL_BASELINE_S moving-tick cadences
+    this._baseCad = null;        // locked baseline (median of the seed)
+    this._recent = [];           // rolling GOAL_SMOOTH_TICKS cadences
+    this._behindClock = 0;       // continuous behind-seconds (paused while not moving)
+    this._lastBehindS = null;    // elapsedS of the last behind nudge
+    this._fired = { half: false, ninety: false, complete: false };
+    this._silenced = false;      // overrun: past goalS*1.10, silent forever
+    this._prevKm = null;
+    this._lastKmChangeS = null;  // GPS freshness: elapsedS of the last km change
+  }
+
+  get onPace() { return this._onPace; }
+
+  // m: analyze() metrics (1 Hz); elapsedS: seconds since run start; kmNow: live
+  // GPS distance (the v2 hook is now the primary branch). Returns at most one
+  // event per tick: complete > ninety > half > behind.
+  tick(m, elapsedS, kmNow = null) {
+    if (this._silenced) return null;
+
+    // GPS freshness: the branch is chosen per tick by whether distance moved
+    // within the last 10 s
+    if (typeof kmNow === 'number' && isFinite(kmNow) && kmNow !== this._prevKm) {
+      this._lastKmChangeS = elapsedS;
+      this._prevKm = kmNow;
+    }
+    const gpsLive = typeof kmNow === 'number' && isFinite(kmNow) &&
+      this._lastKmChangeS != null && elapsedS - this._lastKmChangeS <= 10;
+
+    // the moment the distance is covered, stamp the actual time (any freshness)
+    if (this.actualS == null && typeof kmNow === 'number' && kmNow >= this.goalKm) {
+      this.actualS = elapsedS;
+    }
+
+    // cadence fallback machinery (kept warm on every moving tick)
+    const moving = !!(m && m.moving);
+    if (moving && typeof m.cadence === 'number' && isFinite(m.cadence) && m.cadence > 0) {
+      if (this._baseCad == null) {
+        this._cadSeed.push(m.cadence);
+        if (this._cadSeed.length >= CONFIG.GOAL_BASELINE_S) this._baseCad = median(this._cadSeed);
+      } else {
+        this._recent.push(m.cadence);
+        if (this._recent.length > CONFIG.GOAL_SMOOTH_TICKS) this._recent.shift();
+      }
+    }
+
+    // on-pace + behind clock for the active branch
+    let behindWindowS;
+    if (gpsLive) {
+      const required = this.goalKm / this.goalS; // km/s
+      const behindKm = elapsedS * required - kmNow;
+      const thr = Math.max(CONFIG.GOAL_BEHIND_KM_MIN, CONFIG.GOAL_BEHIND_FRAC * this.goalKm);
+      this._onPace = behindKm <= thr;
+      behindWindowS = CONFIG.GOAL_BEHIND_S;
+    } else {
+      // cadence proxy: on pace until the baseline locks; after, rolling
+      // trimmed mean vs 97% of own baseline
+      this._onPace = this._baseCad == null || this._recent.length === 0 ||
+        trimmedMean(this._recent) >= CONFIG.GOAL_ONPACE_FRAC * this._baseCad;
+      behindWindowS = CONFIG.GOAL_CADENCE_BEHIND_S;
+    }
+    if (moving) this._behindClock = this._onPace ? 0 : this._behindClock + 1;
+    // not moving: the clock PAUSES (neither grows nor resets)
+
+    // no live GPS this tick: fall back to time-based completion against the
+    // target (the cadence proxy cannot measure distance)
+    if (!gpsLive && this.actualS == null && elapsedS >= this.goalS) this.actualS = elapsedS;
+
+    // ---- events, highest priority first ----
+    // complete: distance covered inside the overrun allowance
+    if (!this._fired.complete && this.actualS != null &&
+        this.actualS <= this.goalS * (1 + CONFIG.GOAL_OVERRUN_FRAC)) {
+      this._fired.complete = this._fired.ninety = this._fired.half = true;
+      return { event: 'complete', actualS: this.actualS };
+    }
+
+    // milestones: by DISTANCE when GPS is live, by time in the cadence fallback
+    const frac = gpsLive ? kmNow / this.goalKm : elapsedS / this.goalS;
+    if (!this._fired.ninety && frac >= CONFIG.GOAL_MILESTONES[1]) {
+      this._fired.ninety = this._fired.half = true;
+      return { event: 'ninety' };
+    }
+    if (!this._fired.half && frac >= CONFIG.GOAL_MILESTONES[0]) {
+      this._fired.half = true;
+      return { event: 'half' };
+    }
+
+    // overrun: past goalS*1.10 with the goal not completed — silent forever
+    if (elapsedS > this.goalS * (1 + CONFIG.GOAL_OVERRUN_FRAC)) {
+      this._silenced = true;
+      return null;
+    }
+
+    // behind nudge: continuous behind-seconds + minimum gap between nudges
+    if (this._behindClock >= behindWindowS &&
+        (this._lastBehindS == null || (elapsedS - this._lastBehindS) * 1000 >= CONFIG.GOAL_NUDGE_GAP_MS)) {
+      this._lastBehindS = elapsedS;
+      this._behindClock = 0;
+      return { event: 'behind' };
     }
     return null;
   }

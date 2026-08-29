@@ -79,14 +79,36 @@ export class Session {
     } catch { /* no geolocation at all */ }
   }
 
-  // Called at 1 Hz with {cadence, bounce, impact, asym, sway, score, moving}
+  // Arm a distance+time goal for this run. Counters feed the saved run's
+  // onPacePct; actual completion time is stamped in tick() when km crosses.
+  setGoal(goalKm, goalS) {
+    this._goalKm = goalKm;
+    this._goalS = goalS;
+    this._goalTicks = 0;
+    this._goalOn = 0;
+    this._goalActualS = null; // elapsed s when goalKm was covered (null if never)
+  }
+
+  // Called at 1 Hz with {cadence, bounce, impact, asym, sway, score, moving[, goalOnPace]}
   tick(metrics) {
     if (this.stopped) return;
     const m = metrics || {};
     const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
     const asym = num(m.asym);
     const balance = num(m.balance);
+    let onPace = null;
+    if (this._goalS && m.moving) {
+      this._goalTicks++;
+      onPace = m.goalOnPace ? 1 : 0;
+      if (m.goalOnPace) this._goalOn++;
+    }
+    if (this._goalKm && this._goalActualS == null && this.km >= this._goalKm) {
+      // HONESTY: GPS accuracy is ±10–30 m and watchPosition fixes arrive at
+      // ~1 Hz, so this stamp is coarse — sub-400 m goals are demo-grade.
+      this._goalActualS = Math.round((Date.now() - this.startedAt) / 1000);
+    }
     this.timeline.push({
+      onPace,
       t: Math.round((Date.now() - this.startedAt) / 1000),
       cadence: num(m.cadence),
       bounce: num(m.bounce),
@@ -164,6 +186,15 @@ export class Session {
       },
       score: avgOf(tl, 'score') == null ? null : Math.round(avgOf(tl, 'score')),
     };
+    if (this._goalS != null) {
+      run.goalKm = this._goalKm;
+      run.goalS = this._goalS;
+      run.actualS = this._goalActualS; // when the distance was covered; null if never
+      // met = covered the goal distance within the 10% overrun allowance;
+      // ending the run before reaching the distance is a miss
+      run.metGoal = this._goalActualS != null && this._goalActualS <= this._goalS * 1.10;
+      run.onPacePct = this._goalTicks ? Math.round((this._goalOn / this._goalTicks) * 100) : null;
+    }
     this._run = run;
     try {
       const key = storageKey(this.user);
@@ -274,6 +305,23 @@ function fmtDuration(s) {
 function fmtClock(s) {
   const m = Math.floor((s || 0) / 60), sec = Math.floor((s || 0) % 60);
   return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+// "400 m" below 1 km, "5 km" at/above — for the goal summary cell
+function fmtDist(km) {
+  if (typeof km !== 'number' || !isFinite(km)) return '–';
+  if (km < 1) return `${Math.round(km * 1000)} m`;
+  const v = Math.round(km * 100) / 100;
+  return `${v} km`;
+}
+
+// Sub-line of the goal summary cell. Old runs may lack goalKm/actualS — render
+// what exists rather than blanking the cell.
+function goalCellSub(run) {
+  const target = fmtClock(run.goalS);
+  if (run.goalKm == null) return `${target} target`;
+  if (run.actualS != null) return `${fmtDist(run.goalKm)} in ${fmtClock(run.actualS)} vs ${target} target`;
+  return `${fmtDist(run.goalKm)} · ${target} target · not reached`;
 }
 
 function series(run, key) {
@@ -585,6 +633,8 @@ export function renderInsights(containerEl, run, prevRun) {
       <div><div class="si-big">${fmtDuration(dur)}</div><div class="si-sub">duration</div></div>
       <div><div class="si-big">${(run.cues || []).length}</div><div class="si-sub">cues</div></div>
       <div><div class="si-big" style="font-size:16px;padding-top:5px">${run.mode === 'ears' ? 'AirPods' : 'Phone'}</div><div class="si-sub">sensor</div></div>
+      ${run.goalS != null ? `
+      <div><div class="si-big" style="font-size:16px;padding-top:5px;color:${run.metGoal ? '#3ddc84' : '#ff8a3d'}">${run.metGoal ? 'Met' : 'Short'}</div><div class="si-sub">${goalCellSub(run)}</div></div>` : ''}
     </div>
 
     <div class="si-card">

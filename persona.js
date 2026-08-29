@@ -22,6 +22,19 @@ export const LINES = {
     { text: "Textbook. Don't change a thing.", clip: 'persona-praise-2' },
     { text: "Quiet from me is a compliment. This is why.", clip: 'persona-praise-3' },
   ],
+  // goal-run milestones (one-shot) and behind-the-pace nudges
+  goalHalf: [
+    { text: "Halfway there. The rhythm's yours — keep it.", clip: 'persona-goalhalf-1' },
+    { text: "That's half. Nothing to fix — carry on.", clip: 'persona-goalhalf-2' },
+  ],
+  goalNinety: [
+    { text: "Ninety percent down. Hold this to the line.", clip: 'persona-goalninety-1' },
+    { text: "Nearly there. Don't sprint it — just finish it.", clip: 'persona-goalninety-2' },
+  ],
+  goalBehind: [
+    { text: "You're drifting off the pace. Lift it a touch.", clip: 'persona-goalbehind-1' },
+    { text: "Behind the clock. Quicker feet, longer road eaten.", clip: 'persona-goalbehind-2' },
+  ],
 };
 
 // Motivation mode ("motivate" toggle): a short boost roughly every ten seconds
@@ -92,6 +105,20 @@ export function kmLine(n) {
     `${n} K. Right on rhythm.`,
   ];
   return { text: variants[n % variants.length] };
+}
+
+// goal-run dynamic lines — spoken via bridge/TTS, no pre-rendered clip
+export function goalStartLine(min) {
+  return { text: `${min} minutes on the clock. Settle in — I'll keep count.` };
+}
+
+export function goalCompleteLine(actualS, goalS) {
+  const s = Math.max(0, Math.round(actualS));
+  const mmss = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const diff = Math.round(goalS - actualS);
+  return diff >= 0
+    ? { text: `That's the distance — ${mmss}, ${diff} seconds ahead of plan. Lovely.` }
+    : { text: `Distance done in ${mmss} — ${-diff} seconds over, but done is done.` };
 }
 
 export function runEndLine(score, cueCount) {

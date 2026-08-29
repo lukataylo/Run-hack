@@ -112,6 +112,25 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
 .cue-card .txt{font-weight:600}
 #etiquette{margin-top:14px;color:var(--dim);font-size:13px;line-height:1.55}
 
+/* ---------- goal run ---------- */
+.goal-sec{font-size:10px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);margin-top:14px}
+.goal-chips{display:flex;background:var(--card2);border-radius:12px;padding:4px;gap:4px;margin-top:8px}
+.goal-chips button{flex:1;padding:9px 0;border-radius:9px;font-weight:700;font-size:13px;color:var(--dim)}
+.goal-chips button.on{background:var(--grad);color:#fff}
+.goal-step{display:flex;align-items:center;justify-content:center;gap:18px;margin-top:10px}
+.goal-step .st{width:44px;height:44px;border-radius:50%;background:var(--card2);display:flex;align-items:center;justify-content:center;color:var(--text);flex:none}
+.goal-step .st:active{background:#2a2a30}
+.goal-val{font-size:28px;min-width:130px;text-align:center}
+#goal-pace{text-align:center;margin-top:10px;color:var(--accent2);font-weight:600;font-size:12px;min-height:15px}
+#goal-note{font-size:11px;color:var(--dim);margin-top:10px;line-height:1.5}
+#goal-clear{display:block;width:100%;margin-top:12px;padding:10px 0;border-radius:10px;background:var(--card2);color:var(--accent);font-weight:700;font-size:13px}
+#goal-clear[hidden]{display:none}
+#goal-pill{display:flex;align-items:center;gap:10px;margin:0 0 14px;padding:13px 16px}
+#goal-pill[hidden]{display:none}
+#goal-remaining{font-size:11px;font-weight:800;letter-spacing:.1em;color:var(--accent2)}
+#goal-remaining.done{color:var(--good)}
+#goal-remaining[hidden]{display:none}
+
 /* ---------- profile ---------- */
 .set-row{display:flex;align-items:center;gap:12px;padding:16px;margin-top:10px}
 .set-row .lbl{font-weight:700}
@@ -153,6 +172,12 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
     <span class="spacer"></span>
     <span class="eyebrow" id="conn-mode">Hand mode</span>
   </div>
+  <div class="card" id="goal-pill" hidden>
+    <span class="dot"></span>
+    <span style="font-weight:600">Goal armed</span>
+    <span class="spacer"></span>
+    <span class="eyebrow orange" id="goal-pill-val"></span>
+  </div>
   <button id="btn-start">
     <svg class="ic" viewBox="0 0 24 24" style="stroke:none;fill:#fff"><path d="M8 5.5v13l11-6.5z"/></svg>
     Start Run
@@ -168,7 +193,7 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
 <section class="screen" id="scr-live">
   <div id="live-top">
     <span id="live-badge"><span class="dot"></span>LIVE</span>
-    <span id="live-title"><div class="t">Outdoor Run</div><div id="timer" class="num">00:00:00</div></span>
+    <span id="live-title"><div class="t">Outdoor Run</div><div id="timer" class="num">00:00:00</div><div id="goal-remaining" class="num" hidden></div></span>
     <span id="gps-ind"><svg class="ic" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M4 18v-4M9 18v-8M14 18V7M19 18V4"/></svg>GPS</span>
   </div>
 
@@ -261,6 +286,28 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
 <!-- ================= COACH ================= -->
 <section class="screen" id="scr-coach">
   <div class="scr-head"><span class="title">Coach</span></div>
+  <div class="card" id="goal-card">
+    <div class="eyebrow orange">Goal run — optional</div>
+    <div class="goal-sec">Distance</div>
+    <div class="goal-chips" id="goal-chips">
+      <button data-km="0.1">100 m</button><button data-km="0.4">400 m</button><button data-km="1">1 K</button><button data-km="5">5 K</button>
+    </div>
+    <div class="goal-step">
+      <button class="st" id="gd-minus"><svg class="ic" viewBox="0 0 24 24"><path d="M6 12h12"/></svg></button>
+      <div class="goal-val num" id="goal-dist-val">--</div>
+      <button class="st" id="gd-plus"><svg class="ic" viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></svg></button>
+    </div>
+    <div class="goal-sec">Target time</div>
+    <div class="goal-step">
+      <button class="st" id="gt-minus"><svg class="ic" viewBox="0 0 24 24"><path d="M6 12h12"/></svg></button>
+      <div class="goal-val num" id="goal-time-val">--</div>
+      <button class="st" id="gt-plus"><svg class="ic" viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></svg></button>
+    </div>
+    <div id="goal-pace"></div>
+    <div id="goal-note">Optional — leave unset and the run behaves as normal. Applies to your next run only,
+    then clears. GPS accuracy is ±10–30 m with ~1 fix a second, so goals under 400 m are demo-grade.</div>
+    <button id="goal-clear" hidden>Clear goal</button>
+  </div>
   <div class="bot-slot" id="coach-bot" style="background:var(--card)"><div class="bot-ph" style="width:56px;height:56px"></div></div>
   <div class="card cue-card"><span class="tag">Cadence</span><span class="txt">“Quicker feet. Shorten your stride.”</span></div>
   <div class="card cue-card"><span class="tag">Bounce</span><span class="txt">“Too much bounce. Run softer, drive forward.”</span></div>
@@ -316,7 +363,7 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
 </div>
 
 <script type="module">
-import { analyze, Coach, verticalSeries, CONFIG } from './coach.js';
+import { analyze, Coach, verticalSeries, CONFIG, GoalTracker } from './coach.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -347,6 +394,9 @@ let running = false, coach = null, session = null, music = null;
 let runT0 = 0, wakeLock = null;
 let cueLog = [], impacts = [], lastMetrics = null, lastRun = null;
 let recording = false, recBuf = [], lastRecording = null;
+// goal run (optional, one-shot): draft = the Coach-tab form; active = this run's
+let goalDraft = { km: null, s: null };
+let goalTracker = null, activeGoal = null, pendingGoalEvent = null, goalDone = false;
 
 /* ---------- hand-mode sample buffer ---------- */
 let handBuf = [];
@@ -383,7 +433,7 @@ function paintUserSeg() {
   for (const b of document.querySelectorAll('#user-seg button')) b.classList.toggle('on', b.dataset.u === user);
 }
 for (const b of document.querySelectorAll('#user-seg button'))
-  b.onclick = () => { user = b.dataset.u; localStorage.setItem('user', user); paintUserSeg(); paintInsights(); };
+  b.onclick = () => { user = b.dataset.u; localStorage.setItem('user', user); paintUserSeg(); paintInsights(); loadGoal(); paintGoal(); };
 paintUserSeg();
 
 function paintModeSeg() {
@@ -411,6 +461,80 @@ function toggleMotivate() {
 $('tgl-motivate').onclick = toggleMotivate;
 $('btn-motivate').onclick = toggleMotivate;
 paintMotivate();
+
+/* ---------- goal run form (Coach tab) — strictly optional, per-runner ---------- */
+// unset (--/--) by default; armed only when the user deliberately sets BOTH
+// distance and time; consumed by the next run, then cleared.
+const GOAL_DEFAULT_TIME = { 100: 30, 400: 120, 1000: 330, 5000: 1800 }; // m -> s prefill
+const GOAL_KM_MIN = 0.05, GOAL_KM_MAX = 42.2, GOAL_S_MIN = 15, GOAL_S_MAX = 14400;
+function loadGoal() {
+  try {
+    const g = JSON.parse(localStorage.getItem('goal:' + user) || 'null');
+    goalDraft = g && g.km > 0 && g.s > 0 ? { km: g.km, s: g.s } : { km: null, s: null };
+  } catch { goalDraft = { km: null, s: null }; }
+}
+function saveGoal() {
+  try {
+    if (goalDraft.km && goalDraft.s) localStorage.setItem('goal:' + user, JSON.stringify(goalDraft));
+    else localStorage.removeItem('goal:' + user);
+  } catch {}
+}
+function clearGoal() { goalDraft = { km: null, s: null }; saveGoal(); paintGoal(); }
+const fmtMMSS = (s) => `${Math.floor(s / 60)}:${String(Math.round(s) % 60).padStart(2, '0')}`;
+const fmtGoalDist = (km) => km < 1 ? `${Math.round(km * 1000)} m` : `${Math.round(km * 100) / 100} km`;
+function paintGoal() {
+  const { km, s } = goalDraft;
+  for (const b of document.querySelectorAll('#goal-chips button'))
+    b.classList.toggle('on', km != null && Math.abs(km - Number(b.dataset.km)) < 1e-9);
+  $('goal-dist-val').textContent = km == null ? '--' : fmtGoalDist(km);
+  $('goal-time-val').textContent = s == null ? '--' : fmtMMSS(s);
+  // implied pace: /km for most goals, km/h for sprint paces under 3:00 /km
+  let pace = '';
+  if (km && s) {
+    const secPerKm = s / km;
+    pace = secPerKm < 180 ? `target ${(km / s * 3600).toFixed(1)} km/h` : `target ${fmtMMSS(secPerKm)} /km`;
+  }
+  $('goal-pace').textContent = pace;
+  $('goal-clear').hidden = km == null && s == null;
+  const armed = km != null && s != null;
+  $('goal-pill').hidden = !armed;
+  if (armed) $('goal-pill-val').textContent = `${fmtGoalDist(km)} · ${fmtMMSS(s)}`;
+}
+function setGoalKm(km) {
+  goalDraft.km = km;
+  if (km != null && goalDraft.s == null) goalDraft.s = GOAL_DEFAULT_TIME[Math.round(km * 1000)] ?? 300;
+  saveGoal(); paintGoal();
+}
+for (const b of document.querySelectorAll('#goal-chips button')) b.onclick = () => {
+  const km = Number(b.dataset.km);
+  // re-tapping the active chip clears the distance
+  if (goalDraft.km != null && Math.abs(goalDraft.km - km) < 1e-9) setGoalKm(null);
+  else setGoalKm(km);
+};
+function stepGoalKm(dir) {
+  let km = goalDraft.km;
+  if (km == null) { setGoalKm(0.4); return; } // first tap: sensible default
+  const step = km < 1 ? 0.05 : 0.25; // 50 m below 1 km, 250 m above
+  km = Math.min(GOAL_KM_MAX, Math.max(GOAL_KM_MIN, Math.round((km + dir * step) * 1000) / 1000));
+  setGoalKm(km);
+}
+function stepGoalS(dir) {
+  let s = goalDraft.s;
+  if (s == null) {
+    s = goalDraft.km != null ? (GOAL_DEFAULT_TIME[Math.round(goalDraft.km * 1000)] ?? 300) : 300;
+  } else {
+    const step = s < 120 ? 5 : s <= 600 ? 30 : 60; // ±5 s <2 min, ±30 s to 10 min, ±1 min above
+    s = Math.min(GOAL_S_MAX, Math.max(GOAL_S_MIN, s + dir * step));
+  }
+  goalDraft.s = s;
+  saveGoal(); paintGoal();
+}
+$('gd-minus').onclick = () => stepGoalKm(-1);
+$('gd-plus').onclick = () => stepGoalKm(1);
+$('gt-minus').onclick = () => stepGoalS(-1);
+$('gt-plus').onclick = () => stepGoalS(1);
+$('goal-clear').onclick = clearGoal;
+loadGoal(); paintGoal();
 $('tgl-music').onclick = () => {
   // the toggle only arms music — playback starts with the run (Start tap is
   // also a user gesture, so the WebAudio unlock still happens in-gesture)
@@ -520,11 +644,13 @@ let greeted = false, praiseHighSince = 0, lastPraiseT = -Infinity, lastKmSpoken 
 // motivation-mode scheduling (Date.now() deadlines, driven by the 1 Hz loop)
 let motivateNextAt = 0, lastMotivateKm = 0, lastKmChangeAt = 0;
 function sayPersona(line) {
+  // returns true if spoken, false if blocked — goal milestones latch and retry
   try {
-    if (!line || !line.text || !voiceOn) return;
-    if (Date.now() - lastCueWallT < 15000) return;
+    if (!line || !line.text || !voiceOn) return false;
+    if (Date.now() - lastCueWallT < 15000) return false;
     speak(line.text, line.clip);
-  } catch { /* persona is decoration */ }
+    return true;
+  } catch { return false; /* persona is decoration */ }
 }
 function greet() {
   if (greeted) return;
@@ -595,11 +721,26 @@ $('btn-start').onclick = async () => {
   setBots('listening');
   grabWakeLock();
   show('live');
-  sayPersona(persona?.pick?.('runStart')); // exempt from the 20 s cue mute
+  // goal run (optional): armed only when the user set one on the Coach tab —
+  // otherwise the run behaves exactly as it always has
+  pendingGoalEvent = null; goalDone = false; goalTracker = null; activeGoal = null;
+  loadGoal();
+  if (goalDraft.km && goalDraft.s) {
+    activeGoal = { km: goalDraft.km, s: goalDraft.s };
+    try { goalTracker = new GoalTracker(activeGoal.km, activeGoal.s); } catch { goalTracker = null; }
+    try { session?.setGoal?.(activeGoal.km, activeGoal.s); } catch {}
+    clearGoal(); // one-shot: the goal is consumed by this run
+    sayPersona(persona?.goalStartLine?.(Math.max(1, Math.round(activeGoal.s / 60))));
+  } else {
+    sayPersona(persona?.pick?.('runStart')); // exempt from the 20 s cue mute
+  }
+  paintGoalRemaining(0);
 };
 
 $('btn-stop').onclick = () => {
   running = false;
+  goalTracker = null; activeGoal = null; pendingGoalEvent = null; goalDone = false;
+  try { $('goal-remaining').hidden = true; } catch {}
   window.removeEventListener('devicemotion', onMotion);
   try { wakeLock?.release(); } catch {}
   if (music) { try { music.stop(); } catch {} }
@@ -671,13 +812,24 @@ function cueImminent(now) {
 }
 
 function chooseBucket(m) {
-  // 'finish': distance goal 80% done — dormant hook (localStorage 'goalKm' is
-  // unset today, so this branch is NaN-false until goals ship)
-  const goalKm = parseFloat(localStorage.getItem('goalKm'));
-  if (goalKm > 0 && session?.km >= 0.8 * goalKm) return 'finish';
+  // 'finish': the armed goal's real distance progress — 80% of the way there
+  if (goalTracker && activeGoal && typeof session?.km === 'number' &&
+      session.km >= 0.8 * activeGoal.km) return 'finish';
   if (coach?.faultSince?.cadence !== undefined) return 'dig';
   if (m.score >= 80) return 'cruise';
   return 'generic';
+}
+
+// Track session.km changes for GPS freshness (shared by motivation pacing and
+// the goal countdown). Live = distance advanced within the last 10 s.
+function kmFreshness() {
+  const now = Date.now();
+  const km = session?.km;
+  if (typeof km === 'number' && km !== kmFreshness._prevKm) {
+    lastKmChangeAt = now;
+    kmFreshness._prevKm = km;
+  }
+  return typeof km === 'number' && lastKmChangeAt && now - lastKmChangeAt <= 10000;
 }
 
 function motivateTick(m) {
@@ -691,11 +843,7 @@ function motivateTick(m) {
   // v2 distance branch: when GPS is live (km advanced within the last 10 s)
   // pace the boosts by distance — one per ~15 m of progress — else by timer.
   const km = session?.km;
-  if (typeof km === 'number' && km !== motivateTick._prevKm) {
-    lastKmChangeAt = now;
-    motivateTick._prevKm = km;
-  }
-  const gpsLive = typeof km === 'number' && lastKmChangeAt && now - lastKmChangeAt <= 10000;
+  const gpsLive = kmFreshness();
   const due = gpsLive ? km - lastMotivateKm >= 0.015 : now >= motivateNextAt;
   if (!due) return;
   // shared gates: never crowd a corrective cue, never talk over anything
@@ -707,6 +855,49 @@ function motivateTick(m) {
     if (gpsLive) lastMotivateKm = km;
     motivateNextAt = now + 8000 + Math.random() * 4000; // ~10 s spacing
     speak(line.text, line.clip);
+  }
+}
+
+/* ---------- goal run: tracker tick + voice + live countdown ---------- */
+function goalTick(m, elapsedS) {
+  if (!goalTracker || !activeGoal) return;
+  const ge = goalTracker.tick(m, elapsedS, session?.km);
+  if (ge) {
+    if (ge.event === 'behind') {
+      // behind nudges drop when suppressed (no latch) — a stale pace warning
+      // is worse than none
+      sayPersona(persona?.pick?.('goalBehind'));
+    } else {
+      pendingGoalEvent = ge; // milestones latch and retry until the gate opens
+      if (ge.event === 'complete') goalDone = true;
+    }
+  }
+  if (pendingGoalEvent) {
+    const ev = pendingGoalEvent.event;
+    const line = ev === 'half' ? persona?.pick?.('goalHalf')
+      : ev === 'ninety' ? persona?.pick?.('goalNinety')
+      : persona?.goalCompleteLine?.(pendingGoalEvent.actualS ?? elapsedS, activeGoal.s);
+    if (!line || sayPersona(line)) pendingGoalEvent = null;
+  }
+  paintGoalRemaining(elapsedS);
+}
+
+function paintGoalRemaining(elapsedS) {
+  const g = $('goal-remaining');
+  if (!goalTracker || !activeGoal) { g.hidden = true; return; }
+  g.hidden = false;
+  const km = session?.km;
+  if (goalDone || (typeof km === 'number' && km >= activeGoal.km)) {
+    g.textContent = 'GOAL DONE';
+    g.classList.add('done');
+    return;
+  }
+  g.classList.remove('done');
+  if (kmFreshness()) {
+    const leftM = Math.max(0, (activeGoal.km - km) * 1000);
+    g.textContent = leftM >= 1000 ? `GOAL ${(leftM / 1000).toFixed(2)} KM LEFT` : `GOAL ${Math.round(leftM)} M LEFT`;
+  } else {
+    g.textContent = `GOAL ${fmtMMSS(Math.max(0, Math.round(activeGoal.s - elapsedS)))} LEFT`;
   }
 }
 
@@ -774,7 +965,7 @@ setInterval(() => {
 
     if (session) {
       try {
-        session.tick(m);
+        // (session.tick moved below: it must see m.goalOnPace from the tracker)
         if (session.km != null) {
           $('dist-val').textContent = session.km.toFixed(2);
           if (session.km > 0.05) {
@@ -794,8 +985,14 @@ setInterval(() => {
     const cue = coach.update(m, Date.now());
     if (cue) onCue(cue);
 
-    // motivation mode last: it reads the coach clocks the update above just set
+    // motivation mode: it reads the coach clocks the update above just set
     try { motivateTick(m); } catch {}
+
+    // goal run (all optional): tick the tracker + voice, stamp onPace into the
+    // metrics, THEN log the timeline tick so session.tick sees goalOnPace
+    try { goalTick(m, el); } catch {}
+    if (goalTracker) { try { m.goalOnPace = goalTracker.onPace; } catch {} }
+    if (session) { try { session.tick(m); } catch {} }
   } catch (e) {
     console.error('tick failed', e);
   }
