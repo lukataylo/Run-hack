@@ -69,7 +69,7 @@ export const CUES = {
   asymmetry: "You're favouring one side. Even it out.",
   sway: 'Your head is rocking. Eyes forward, run tall.',
   // posture guard (opt-in mode): deviation from the CALIBRATED head level
-  posture: 'Keep looking straight.',
+  posture: 'Your form is rubbish. Look straight.',
 };
 
 // priority order for cue selection (asymmetry ALWAYS lowest — RCT: doesn't predict injury)
@@ -562,13 +562,22 @@ function angleStats(deg) {
 
 // Explainable form score: weighted clamped deductions past each threshold.
 // A judge can ask why any score is what it is.
-function formScore(m, mode = 'hand') {
+export function formScore(m, mode = 'hand') {
   const W = CONFIG.WEIGHTS;
   const dCad = clamp01((CONFIG.CADENCE_FLOOR - m.cadence) / CONFIG.CADENCE_SPREAD);
   const dBounce = clamp01((m.bounce - CONFIG.BOUNCE_MAX) / CONFIG.BOUNCE_SPREAD);
   const dAsym = clamp01((m.asym - CONFIG.ASYM_MAX) / CONFIG.ASYM_SPREAD);
   const dSway = mode === 'ears' ? clamp01((m.sway - CONFIG.SWAY_FALLBACK) / CONFIG.SWAY_SPREAD) : 0;
-  return Math.round(100 - W.cadence * dCad - W.bounce * dBounce - W.asym * dAsym - W.sway * dSway);
+  // posture (up/down vs the SAVED calibration) counts against form — an extra
+  // deduction, present only when the app supplies tiltDev (ears mode with a
+  // Set-level calibration). Head level within the dead zone costs nothing;
+  // full 16-point loss by TILT_FREE + 20°. Exported so the app can re-score
+  // after attaching tiltDev, which analyze() cannot see.
+  const dPosture = typeof m.tiltDev === 'number' && isFinite(m.tiltDev)
+    ? clamp01((m.tiltDev - CONFIG.TILT_FREE_DEG) / 20)
+    : 0;
+  return Math.max(0, Math.round(100 - W.cadence * dCad - W.bounce * dBounce -
+    W.asym * dAsym - W.sway * dSway - 16 * dPosture));
 }
 
 function cross(a, b) {

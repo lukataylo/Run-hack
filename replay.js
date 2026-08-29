@@ -1,7 +1,7 @@
 // replay.js — the entire test suite. `npm run check`, plain node, <1s, exit 1 on failure.
 import {
   analyze, Coach, CONFIG, CUES, GoalTracker,
-  harmonicRatio, strideStats, headStability,
+  harmonicRatio, strideStats, headStability, formScore,
 } from './coach.js';
 // session.js is a browser module but touches document/localStorage/navigator
 // only inside functions, so its pure analysis exports import cleanly in node.
@@ -562,6 +562,16 @@ if (existsSync(FIXTURES)) {
   const stub = scoreCueResponse(mkRun(true).filter((e) => e.t <= 330), cue);
   check('coachability: run ending early is flagged, not scored',
     stub != null && stub.scored === false && stub.runEnded === true && stub.before.length > 0);
+}
+
+// ---- posture feeds the form score ----
+{
+  const base = { cadence: 175, bounce: 7, asym: 0.02, sway: 0.3 };
+  const level = formScore({ ...base }, 'ears');
+  const lookingUp = formScore({ ...base, tiltDev: 30 }, 'ears');
+  const inDeadZone = formScore({ ...base, tiltDev: 5 }, 'ears');
+  check(`posture drops form score (level ${level} > looking up ${lookingUp})`, level - lookingUp >= 10);
+  check('small tilt inside the dead zone costs nothing', inDeadZone === level);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

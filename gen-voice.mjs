@@ -48,7 +48,7 @@ const CUES = {
   'motivate-generic-3': "Quietly getting it done — I see it.",
   'motivate-generic-4': "Forward is winning.",
   // sassy personality (opt-in) — CARROT-Weather-informed, PG-13, punches at effort never bodies
-  'posture': "Keep looking straight.",
+  'posture': "Your form is rubbish. Look straight.",
   // coach-screen opening roasts
   'roast-1': "Oh look who remembered they have legs.",
   'roast-2': "I've seen your last run. We have work to do.",

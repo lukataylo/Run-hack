@@ -713,7 +713,7 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
 </div>
 
 <script type="module">
-import { analyze, Coach, verticalSeries, swayOf, CONFIG, GoalTracker } from './coach.js';
+import { analyze, Coach, verticalSeries, swayOf, CONFIG, GoalTracker, formScore } from './coach.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -2177,7 +2177,12 @@ setInterval(() => {
         const t = rawTilt();
         // pitch ONLY: roll/yaw change when the runner turns a corner and were
         // producing false posture faults on every direction change
-        if (t) m.tiltDev = Math.abs(t.pitch - levelRef.pitch);
+        if (t) {
+          m.tiltDev = Math.abs(t.pitch - levelRef.pitch);
+          // posture counts against the FORM SCORE: analyze() can't see the
+          // calibration, so re-score here with the deviation attached
+          m.score = formScore(m, mode);
+        }
       } catch {}
     }
 
