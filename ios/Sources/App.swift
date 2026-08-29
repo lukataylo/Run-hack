@@ -151,10 +151,18 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
             let G = 9.81
             let a = dm.userAcceleration, g = dm.gravity
             // CoreMotion reports g-units; the sample contract is m/s²
+            // loc: which bud is streaming (0 unknown, 1 left, 2 right) — the
+            // system streams ONE bud at a time; calibration mode shows this live
+            let loc: Int
+            switch dm.sensorLocation {
+            case .headphoneLeft: loc = 1
+            case .headphoneRight: loc = 2
+            default: loc = 0
+            }
             let js = String(
-                format: "window.__head&&window.__head({t:%.1f,ax:%.4f,ay:%.4f,az:%.4f,gx:%.4f,gy:%.4f,gz:%.4f})",
+                format: "window.__head&&window.__head({t:%.1f,ax:%.4f,ay:%.4f,az:%.4f,gx:%.4f,gy:%.4f,gz:%.4f,loc:%d})",
                 t, a.x * G, a.y * G, a.z * G,
-                (a.x + g.x) * G, (a.y + g.y) * G, (a.z + g.z) * G)
+                (a.x + g.x) * G, (a.y + g.y) * G, (a.z + g.z) * G, loc)
             self.web?.evaluateJavaScript(js, completionHandler: nil)
         }
     }
