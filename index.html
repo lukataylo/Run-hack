@@ -334,6 +334,14 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
     <div style="flex:1"><div class="lbl">Motivation mode</div><div class="note">A short boost roughly every ten seconds while you run</div></div>
     <button class="toggle" id="tgl-motivate"></button>
   </div>
+  <div class="card" style="margin-top:12px">
+    <div class="lbl">Coach personality</div>
+    <div class="note" style="margin-bottom:10px">Sassy roasts your effort, never you — and form cues stay sincere.</div>
+    <div class="seg" id="personality-seg">
+      <button data-p="supportive" class="on">Supportive</button>
+      <button data-p="sassy">Sassy</button>
+    </div>
+  </div>
   <p id="etiquette">Your coach speaks only when it matters: nothing for the first 20 seconds, a fault has to
   persist for 12 seconds before it earns a cue, cues arrive at least 30 seconds apart, and the same correction
   is never repeated within 90 seconds — a fix takes about 300 strides to land. One fault at a time, highest
@@ -405,8 +413,15 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
     </div>
     <div id="cal-3d" style="height:230px;margin-top:10px;border-radius:12px;overflow:hidden;
       background:radial-gradient(120% 90% at 50% 10%,#221008 0%,#131316 60%)"></div>
-    <button id="cal-setlevel" style="width:100%;margin-top:10px;padding:12px 0;border-radius:12px;
-      background:var(--grad);color:#fff;font-weight:800;font-size:14px">Set level — look straight ahead, then tap</button>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button id="cal-setlevel" style="flex:2;padding:12px 0;border-radius:12px;
+        background:var(--grad);color:#fff;font-weight:800;font-size:14px">Set level — look straight ahead, then tap</button>
+      <button id="cal-resetlevel" style="flex:1;padding:12px 0;border-radius:12px;
+        background:var(--card2);color:var(--dim);font-weight:700;font-size:13px">Reset</button>
+      <button id="cal-axes" style="flex:1;padding:12px 0;border-radius:12px;
+        background:var(--card2);color:var(--dim);font-weight:700;font-size:13px">Axes 2/8</button>
+    </div>
+    <div class="note" id="cal-axes-note" style="margin-top:6px">If turns or tilts render on the wrong axis, tap Axes until the head copies you — it sticks.</div>
     <div class="note">Full AirPods orientation — pitch, roll and yaw, live. Set level zeroes it to your natural gaze.</div>
   </div>
 
@@ -550,6 +565,28 @@ paintModeSeg();
 
 $('tgl-voice').onclick = () => { voiceOn = !voiceOn; $('tgl-voice').classList.toggle('on', voiceOn); $('btn-voice').classList.toggle('on', voiceOn); };
 $('btn-voice').onclick = () => $('tgl-voice').onclick();
+
+/* ---------- coach personality (supportive | sassy) — strictly opt-in ---------- */
+let personality = localStorage.getItem('personality') === 'sassy' ? 'sassy' : 'supportive';
+persona?.setPersonality?.(personality);
+function paintPersonality() {
+  for (const b of document.querySelectorAll('#personality-seg button')) b.classList.toggle('on', b.dataset.p === personality);
+}
+for (const b of document.querySelectorAll('#personality-seg button')) {
+  b.onclick = () => {
+    const was = personality;
+    personality = b.dataset.p;
+    try { localStorage.setItem('personality', personality); } catch {}
+    persona?.setPersonality?.(personality);
+    paintPersonality();
+    // preview the switch in-gesture so the choice is audible immediately
+    if (personality === 'sassy' && was !== 'sassy') {
+      try { voice?.unlock?.(); } catch {}
+      speak("Sassy mode. I say what your last coach was thinking.", null);
+    }
+  };
+}
+paintPersonality();
 
 /* ---------- motivation mode: one handler for both controls ---------- */
 function paintMotivate() {
@@ -964,14 +1001,25 @@ function kmFreshness() {
   return typeof km === 'number' && lastKmChangeAt && now - lastKmChangeAt <= 10000;
 }
 
+let pauseSince = 0, lastStoppedSassAt = 0;
 function motivateTick(m) {
-  if (!motivateOn || !voiceOn || !running) return;
+  if (!voiceOn || !running) return;
   const now = Date.now();
   if (!m?.moving) {
-    // paused at a light: never speak, and never fire the instant they restart
+    // paused at a light: never speak boosts, never fire the instant they restart
     if (motivateNextAt < now + 3000) motivateNextAt = now + 3000;
+    // sassy-only: 20 s of standing still earns one jab, ≥2 min apart, and
+    // never inside the start-of-run grace or near a corrective cue
+    if (!pauseSince) pauseSince = now;
+    if (personality === 'sassy' && now - pauseSince > 20000 && now - lastStoppedSassAt > 120000 &&
+        now - runT0 > 30000 && now - lastCueWallT > 8000 && !voice?.isBusy?.()) {
+      const line = persona?.pick?.('stopped');
+      if (line) { lastStoppedSassAt = now; speak(line.text, line.clip); }
+    }
     return;
   }
+  pauseSince = 0;
+  if (!motivateOn) return;
   // v2 distance branch: when GPS is live (km advanced within the last 10 s)
   // pace the boosts by distance — one per ~15 m of progress — else by timer.
   const km = session?.km;
@@ -1052,12 +1100,16 @@ $('row-calib').onclick = () => {
 };
 $('btn-calib-back').onclick = () => show('profile');
 $('cal-setlevel').onclick = () => { try { cal3d?.setLevel?.(); calRef = null; } catch {} };
+$('cal-resetlevel').onclick = () => { try { cal3d?.resetLevel?.(); calRef = { pitch: 0, roll: 0 }; } catch {} };
+$('cal-axes').onclick = () => {
+  try { const i = cal3d?.cycleAxes?.(); if (i != null) $('cal-axes').textContent = `Axes ${i + 1}/8`; } catch {}
+};
 for (const b of document.querySelectorAll('#cal-viewseg button')) {
   b.onclick = () => {
     document.querySelectorAll('#cal-viewseg button').forEach((x) => x.classList.toggle('on', x === b));
     const v = b.dataset.v;
     $('cal-3d').style.display = v === 'gauges' ? 'none' : '';
-    $('cal-setlevel').style.display = v === 'gauges' ? 'none' : '';
+    $('cal-setlevel').parentElement.style.display = v === 'gauges' ? 'none' : 'flex';
     $('cal-gauges-card').style.display = v === '3d' ? 'none' : '';
   };
 }

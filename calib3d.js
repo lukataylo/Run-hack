@@ -62,6 +62,14 @@ export function mountCalib3D(el, getSample) {
   const arrow = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 0), 0.001, 0xff8a3d, 0.12, 0.08);
   scene.add(arrow);
 
+  // [sx, sy-slot-sign, sz-slot-sign, swapYZ] — 8 proper candidates
+  const AXIS_MAPS = [
+    [1, 1, -1, 0], [-1, 1, -1, 0], [1, 1, 1, 0], [-1, 1, 1, 0],
+    [1, -1, 1, 1], [-1, -1, 1, 1], [1, 1, -1, 1], [-1, 1, -1, 1],
+  ];
+  let axisIdx = 1; // default = the real-head pitch fix
+  try { axisIdx = Number(localStorage.getItem('calib3d-axes') ?? 1) || 1; } catch {}
+
   const q = new THREE.Quaternion(), target = new THREE.Quaternion();
   const refInv = new THREE.Quaternion(); // "Set level" zero-reference
   const shown = new THREE.Quaternion();
@@ -72,9 +80,13 @@ export function mountCalib3D(el, getSample) {
     const s = getSample?.();
     if (s) {
       if (typeof s.qw === 'number') {
-        // CoreMotion is z-up, three.js y-up. Pitch (x) sign flipped after a
-        // real-head test: nod-down previously rendered as nod-up.
-        target.set(-s.qx, s.qz, -s.qy, s.qw);
+        // CoreMotion (z-up, headphone device frame) -> three.js (y-up) axis
+        // mapping. The true device frame is settled empirically: the Axes
+        // button cycles candidates until the head copies the wearer, then the
+        // pick persists. Candidate 1 fixed pitch on a real head; yaw/roll
+        // still under test.
+        const M = AXIS_MAPS[axisIdx % AXIS_MAPS.length];
+        target.set(M[0] * s.qx, M[1] * (M[3] ? s.qy : s.qz), M[2] * (M[3] ? s.qz : s.qy), s.qw);
       } else if (typeof s.gx === 'number') {
         // gravity-only fallback: pitch/roll, no yaw (pitch sign matches the
         // quaternion path's real-head fix)
@@ -96,6 +108,15 @@ export function mountCalib3D(el, getSample) {
     stop() { clearInterval(iv); renderer.dispose(); },
     // "look straight ahead, tap Set level" — current pose becomes zero
     setLevel() { refInv.copy(q).invert(); },
+    // back to raw sensor orientation (undo Set level)
+    resetLevel() { refInv.identity(); },
+    // cycle the CoreMotion->three.js axis mapping; returns the new index
+    cycleAxes() {
+      axisIdx = (axisIdx + 1) % AXIS_MAPS.length;
+      try { localStorage.setItem('calib3d-axes', String(axisIdx)); } catch {}
+      refInv.identity(); // an axis change invalidates the zero reference
+      return axisIdx;
+    },
     // relative pitch/roll (deg) for the gauges, after zeroing
     angles() {
       const e = new THREE.Euler().setFromQuaternion(shown, 'YXZ');

@@ -65,28 +65,77 @@ export const MOTIVATE = {
   ],
 };
 
-// Per-bucket shuffled deck: deal every line once (no repeats within a cycle),
-// reshuffle only when the deck is exhausted.
-const motivateDecks = {};
-export function pickMotivate(bucket) {
-  const table = MOTIVATE[bucket];
-  if (!table || !table.length) return null;
-  let deck = motivateDecks[bucket];
+// ---- SASSY personality (CARROT-Weather-informed, strictly opt-in) ----------
+// The research rules baked in here: sass rides ON TOP of correct coaching
+// (corrective cues are untouched and always sincere), it punches at effort and
+// excuses never at bodies, one jab per event, ≥4 min between sassy motivation
+// lines, and failure sass is the gentlest — one jab then forward-looking.
+export const SASSY = {
+  runStart: [
+    { text: "Oh good, you showed up. I had a whole speech ready about quitters.", clip: 'sassy-runstart-1' },
+    { text: "Let's go, legs. Your couch will still love you when you get back.", clip: 'sassy-runstart-2' },
+    { text: 'Starting the run. Lower your expectations accordingly.', clip: 'sassy-runstart-3' },
+  ],
+  cruise: [
+    { text: "Look at you, jogging like nobody's chasing you. Because nobody is.", clip: 'sassy-cruise-1' },
+    { text: "This pace is fine. 'Fine' is also how people describe airline food.", clip: 'sassy-cruise-2' },
+  ],
+  dig: [
+    { text: "You look terrible. Wonderful. That means it's working.", clip: 'sassy-dig-1' },
+    { text: 'Your legs are lying to you. I never lie. Keep going.', clip: 'sassy-dig-2' },
+  ],
+  goalBehind: [
+    { text: "You're behind pace. The goal isn't going to chase itself. That's your one job.", clip: 'sassy-behind-1' },
+    { text: "Behind the clock. I've seen glaciers negative-split better than this.", clip: 'sassy-behind-2' },
+  ],
+  stopped: [
+    { text: 'Interesting strategy — standing still. Bold. Wrong, but bold.', clip: 'sassy-stopped-1' },
+    { text: "GPS says you've stopped. Physics says the finish line hasn't moved. Your move.", clip: 'sassy-stopped-2' },
+  ],
+};
+
+let personality = 'supportive';
+export function setPersonality(p) { personality = p === 'sassy' ? 'sassy' : 'supportive'; }
+export function getPersonality() { return personality; }
+
+const SASS_MOTIVATE_GAP_MS = 240000; // ≥4 min between sassy motivation lines
+let lastSassAt = 0;
+
+function drawDeck(decks, key, table) {
+  let deck = decks[key];
   if (!deck || !deck.length) {
     deck = table.slice();
-    // Fisher–Yates
-    for (let i = deck.length - 1; i > 0; i--) {
+    for (let i = deck.length - 1; i > 0; i--) { // Fisher–Yates
       const j = Math.floor(Math.random() * (i + 1));
       [deck[i], deck[j]] = [deck[j], deck[i]];
     }
-    motivateDecks[bucket] = deck;
+    decks[key] = deck;
   }
   return deck.pop();
+}
+
+// Per-bucket shuffled deck: deal every line once (no repeats within a cycle),
+// reshuffle only when the deck is exhausted.
+const motivateDecks = {};
+const sassyDecks = {};
+export function pickMotivate(bucket) {
+  // sassy swap-in: only cruise/dig get sass, rate-limited; finish/generic stay warm
+  if (personality === 'sassy' && SASSY[bucket] && Date.now() - lastSassAt >= SASS_MOTIVATE_GAP_MS) {
+    lastSassAt = Date.now();
+    return drawDeck(sassyDecks, bucket, SASSY[bucket]);
+  }
+  const table = MOTIVATE[bucket];
+  if (!table || !table.length) return null;
+  return drawDeck(motivateDecks, bucket, table);
 }
 
 // rotate randomly without immediate repeats
 const lastIdx = {};
 export function pick(event) {
+  // sassy overrides for the events that have them (runStart, goalBehind,
+  // stopped — the last exists only in sassy mode). Greet/praise/milestones
+  // stay sincere: the tonal drop is what signals "this one's real".
+  if (personality === 'sassy' && SASSY[event]) return drawDeck(sassyDecks, event, SASSY[event]);
   const table = LINES[event];
   if (!table || !table.length) return null;
   if (table.length === 1) return table[0];
@@ -116,6 +165,12 @@ export function goalCompleteLine(actualS, goalS) {
   const s = Math.max(0, Math.round(actualS));
   const mmss = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   const diff = Math.round(goalS - actualS);
+  if (personality === 'sassy') {
+    // failure sass is the gentlest: one jab, instantly forward-looking
+    return diff >= 0
+      ? { text: `Goal complete in ${mmss}. I'd say I doubted you, but we both know I did.` }
+      : { text: `Distance done, ${-diff} seconds over. Tragic. Anyway — we go again, and I've already forgotten this one.` };
+  }
   return diff >= 0
     ? { text: `That's the distance — ${mmss}, ${diff} seconds ahead of plan. Lovely.` }
     : { text: `Distance done in ${mmss} — ${-diff} seconds over, but done is done.` };
@@ -123,6 +178,10 @@ export function goalCompleteLine(actualS, goalS) {
 
 export function runEndLine(score, cueCount) {
   const s = typeof score === 'number' && isFinite(score) ? Math.round(score) : null;
+  if (personality === 'sassy') {
+    const scorePart = s == null ? 'Run complete.' : `Run complete. Score ${s}.`;
+    return { text: `${scorePart} Go hydrate, meat-based athlete. I'll be here judging your recovery.` };
+  }
   const scorePart = s == null ? 'Done.' : `Done. Score ${s}.`;
   const tail = cueCount
     ? "We'll tidy that up next time."

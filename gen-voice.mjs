@@ -47,6 +47,18 @@ const CUES = {
   'motivate-generic-2': "One step at a time is all this ever takes.",
   'motivate-generic-3': "Quietly getting it done — I see it.",
   'motivate-generic-4': "Forward is winning.",
+  // sassy personality (opt-in) — CARROT-Weather-informed, PG-13, punches at effort never bodies
+  'sassy-runstart-1': "Oh good, you showed up. I had a whole speech ready about quitters.",
+  'sassy-runstart-2': "Let's go, legs. Your couch will still love you when you get back.",
+  'sassy-runstart-3': "Starting the run. Lower your expectations accordingly.",
+  'sassy-cruise-1': "Look at you, jogging like nobody's chasing you. Because nobody is.",
+  'sassy-cruise-2': "This pace is fine. 'Fine' is also how people describe airline food.",
+  'sassy-dig-1': "You look terrible. Wonderful. That means it's working.",
+  'sassy-dig-2': "Your legs are lying to you. I never lie. Keep going.",
+  'sassy-behind-1': "You're behind pace. The goal isn't going to chase itself. That's your one job.",
+  'sassy-behind-2': "Behind the clock. I've seen glaciers negative-split better than this.",
+  'sassy-stopped-1': "Interesting strategy — standing still. Bold. Wrong, but bold.",
+  'sassy-stopped-2': "GPS says you've stopped. Physics says the finish line hasn't moved. Your move.",
   // Goal-run lines (persona.js) - static milestone/behind variants; the start
   // and complete lines are dynamic and always go through the bridge/TTS.
   'persona-goalhalf-1':   "Halfway there. The rhythm's yours — keep it.",
