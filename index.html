@@ -466,9 +466,6 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
   </div>
 
   <div id="live-ctl">
-    <button class="ctl-sm" id="btn-motivate" title="Motivation mode">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M13 3 6 13.5h4.5L11 21l7-10.5h-4.5L13 3z"/></svg>
-    </button>
     <button class="ctl-sm" id="btn-rec" title="Record fixture">
       <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/></svg>
     </button>
@@ -548,10 +545,6 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
   <div class="card set-row">
     <div style="flex:1"><div class="lbl">Adaptive music</div><div class="note">Generative soundtrack driven by your form</div></div>
     <button class="toggle" id="tgl-music"></button>
-  </div>
-  <div class="card set-row">
-    <div style="flex:1"><div class="lbl">Motivation mode</div><div class="note">A short boost roughly every ten seconds while you run</div></div>
-    <button class="toggle" id="tgl-motivate"></button>
   </div>
   <!-- ears-mode only: it compares HEAD tilt to a calibrated neutral, which is
        meaningless when the sensor is a phone in your hand. Hidden in phone mode. -->
@@ -934,7 +927,7 @@ if (inNativeShell && !localStorage.getItem('mode')) mode = 'ears';
 // a tapped message on the Home header holds the status line for a few seconds
 let connNotice = 0;
 let voiceOn = true, musicOn = false; // voiceOn deliberately unpersisted
-let motivateOn = localStorage.getItem('motivate') === '1';
+const motivateOn = true; // always on per the user — the voice toggle is the mute
 let postureOn = localStorage.getItem('posture') === '1';
 let levelRef = null;
 try { levelRef = JSON.parse(localStorage.getItem('levelRef') || 'null'); } catch {}
@@ -1112,7 +1105,7 @@ $('tgl-voice').onclick = () => { voiceOn = !voiceOn; $('tgl-voice').classList.to
 $('btn-voice').onclick = () => $('tgl-voice').onclick();
 
 /* ---------- coach personality (supportive | sassy) — strictly opt-in ---------- */
-let personality = localStorage.getItem('personality') === 'sassy' ? 'sassy' : 'supportive';
+let personality = localStorage.getItem('personality') === 'supportive' ? 'supportive' : 'sassy'; // sassy is the default
 persona?.setPersonality?.(personality);
 function paintPersonality() {
   for (const b of document.querySelectorAll('#personality-seg button')) b.classList.toggle('on', b.dataset.p === personality);
@@ -1133,16 +1126,6 @@ for (const b of document.querySelectorAll('#personality-seg button')) {
 }
 paintPersonality();
 
-/* ---------- motivation mode: one handler for both controls ---------- */
-function paintMotivate() {
-  $('tgl-motivate').classList.toggle('on', motivateOn);
-  $('btn-motivate').classList.toggle('on', motivateOn);
-}
-function toggleMotivate() {
-  motivateOn = !motivateOn;
-  try { localStorage.setItem('motivate', motivateOn ? '1' : '0'); } catch {}
-  paintMotivate();
-}
 
 /* ---------- posture guard toggle ---------- */
 $('tgl-posture').classList.toggle('on', postureOn);
@@ -1156,9 +1139,6 @@ $('tgl-posture').onclick = () => {
   try { localStorage.setItem('posture', postureOn ? '1' : '0'); } catch {}
   $('tgl-posture').classList.toggle('on', postureOn);
 };
-$('tgl-motivate').onclick = toggleMotivate;
-$('btn-motivate').onclick = toggleMotivate;
-paintMotivate();
 
 /* ---------- form map (Home): last run's heat on the runner figure ---------- */
 // Dynamic import with catch — a broken body.js must never take the app down.
@@ -1693,7 +1673,7 @@ $('btn-start').onclick = async () => {
   if (sessionMod?.Session) { try { session = new sessionMod.Session(mode, user); } catch { session = null; } }
   runT0 = Date.now();
   // first motivation line lands 15–19 s in; km trackers reset per run
-  motivateNextAt = runT0 + 15000 + Math.random() * 4000;
+  motivateNextAt = runT0 + 4000 + Math.random() * 2000; // sass starts almost immediately
   lastMotivateKm = 0; lastKmChangeAt = 0;
   running = true;
   $('cue-line').textContent = 'Listening to your stride…';
