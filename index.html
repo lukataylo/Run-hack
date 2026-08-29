@@ -1761,19 +1761,6 @@ function onCue(cue) {
 // A corrective cue could land within the next 8 s — a motivation line must not
 // collide with it. Mirrors the Coach etiquette clocks (all wall-clock: the app
 // calls coach.update with Date.now()).
-function cueImminent(now) {
-  if (!coach) return false;
-  for (const f of Object.keys(coach.faultSince)) {
-    const earliest = Math.max(
-      coach.faultSince[f] + CONFIG.PERSIST_MS,
-      coach.lastCueT + CONFIG.GAP_MS,
-      (coach.lastFaultT[f] ?? -Infinity) + CONFIG.REPEAT_MS,
-      (coach.t0 ?? now) + CONFIG.MUTE_MS,
-    );
-    if (earliest - now <= 8000) return true;
-  }
-  return false;
-}
 
 function chooseBucket(m) {
   // 'finish': the armed goal's real distance progress — 80% of the way there
@@ -1796,40 +1783,31 @@ function kmFreshness() {
   return typeof km === 'number' && lastKmChangeAt && now - lastKmChangeAt <= 10000;
 }
 
-let pauseSince = 0, lastStoppedSassAt = 0;
+let stillTicks = 0;
 function motivateTick(m) {
+  // EVERY ~10 SECONDS, NO MATTER WHAT (user requirement): while a run is on
+  // and voice isn't muted, a line lands on a steady ~10 s clock — moving or
+  // standing, GPS or not. The only courtesies left: never talk over audio
+  // that's still playing (retry next tick), and give a corrective cue 5 s of
+  // clear air. Both delay a line by seconds, never skip it.
   if (!voiceOn || !running) return;
   const now = Date.now();
+  if (now < motivateNextAt) return;
+  if (voice?.isBusy?.() || now - lastCueWallT < 5000) return; // retries at 1 Hz
+  let line = null;
   if (!m?.moving) {
-    // paused at a light: never speak boosts, never fire the instant they restart
-    if (motivateNextAt < now + 3000) motivateNextAt = now + 3000;
-    // Standing still while the run clock ticks earns a jab QUICKLY — the user's
-    // first test is tapping Start and waiting, and silence there reads as
-    // broken. 8 s of stillness (even right after Start), 60 s between jabs.
-    if (!pauseSince) pauseSince = now;
-    if (personality === 'sassy' && now - pauseSince > 8000 && now - lastStoppedSassAt > 60000 &&
-        now - runT0 > 8000 && now - lastCueWallT > 8000 && !voice?.isBusy?.()) {
-      const line = persona?.pick?.('stopped');
-      if (line) { lastStoppedSassAt = now; speak(line.text, line.clip); }
-    }
-    return;
+    stillTicks++;
+    // standing still: sassy jab when sassy, warm nudge otherwise —
+    // alternating with generic lines so it doesn't loop one joke
+    line = (personality === 'sassy' && stillTicks % 2 === 1)
+      ? persona?.pick?.('stopped')
+      : persona?.pickMotivate?.('generic');
+  } else {
+    stillTicks = 0;
+    line = persona?.pickMotivate?.(chooseBucket(m));
   }
-  pauseSince = 0;
-  if (!motivateOn) return;
-  // v2 distance branch: when GPS is live (km advanced within the last 10 s)
-  // pace the boosts by distance — one per ~15 m of progress — else by timer.
-  const km = session?.km;
-  const gpsLive = kmFreshness();
-  const due = gpsLive ? km - lastMotivateKm >= 0.015 : now >= motivateNextAt;
-  if (!due) return;
-  // shared gates: never crowd a corrective cue, never talk over anything
-  if (now - lastCueWallT < 8000) return;
-  if (cueImminent(now)) return;
-  if (voice?.isBusy?.()) return;
-  const line = persona?.pickMotivate?.(chooseBucket(m));
   if (line) {
-    if (gpsLive) lastMotivateKm = km;
-    motivateNextAt = now + 8000 + Math.random() * 4000; // ~10 s spacing
+    motivateNextAt = now + 9000 + Math.random() * 2000; // ~10 s clock
     speak(line.text, line.clip);
   }
 }
