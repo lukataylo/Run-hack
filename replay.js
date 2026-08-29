@@ -572,6 +572,8 @@ if (existsSync(FIXTURES)) {
   const inDeadZone = formScore({ ...base, tiltDev: 5 }, 'ears');
   check(`posture drops form score (level ${level} > looking up ${lookingUp})`, level - lookingUp >= 10);
   check('small tilt inside the dead zone costs nothing', inDeadZone === level);
+  check('far off level (30°) zeroes the score, perfect legs or not',
+    formScore({ ...base, tiltDev: 30 }, 'ears') === 0);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

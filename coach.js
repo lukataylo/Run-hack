@@ -19,9 +19,9 @@ export const CONFIG = {
   // PITCH-ONLY by design: roll/yaw scramble when the runner changes direction,
   // gravity pitch never does. Posture score = 100 - 3·max(0, |dev|-8), so the
   // fault line (18°) is exactly score < 70 — calibration knobs, keep in sync.
-  TILT_DEV_DEG: 18,            // degrees of pitch off the calibrated neutral = fault (score < 70)
+  TILT_DEV_DEG: 15,            // degrees off the calibrated level = the spoken cue fires
   TILT_FREE_DEG: 8,            // no penalty inside this dead zone
-  TILT_PTS_PER_DEG: 3,         // score lost per degree past the dead zone
+  TILT_FULL_DEG: 30,           // at this deviation the form score is ZERO (up OR down)
   // head orientation stability (ears mode) — CALIBRATION KNOBS.
   // Pozzo & Berthoz 1990 measured head pitch/roll held under ~7° peak-to-peak
   // during locomotion by the vestibulocollic reflex; >10° sustained is a
@@ -573,11 +573,13 @@ export function formScore(m, mode = 'hand') {
   // Set-level calibration). Head level within the dead zone costs nothing;
   // full 16-point loss by TILT_FREE + 20°. Exported so the app can re-score
   // after attaching tiltDev, which analyze() cannot see.
+  // posture can zero the whole score by itself (user requirement): looking
+  // clearly up OR down is rubbish form no matter how good the legs are
   const dPosture = typeof m.tiltDev === 'number' && isFinite(m.tiltDev)
-    ? clamp01((m.tiltDev - CONFIG.TILT_FREE_DEG) / 20)
+    ? clamp01((m.tiltDev - CONFIG.TILT_FREE_DEG) / (CONFIG.TILT_FULL_DEG - CONFIG.TILT_FREE_DEG))
     : 0;
-  return Math.max(0, Math.round(100 - W.cadence * dCad - W.bounce * dBounce -
-    W.asym * dAsym - W.sway * dSway - 16 * dPosture));
+  return Math.max(0, Math.round((100 - W.cadence * dCad - W.bounce * dBounce -
+    W.asym * dAsym - W.sway * dSway) * (1 - dPosture)));
 }
 
 function cross(a, b) {
