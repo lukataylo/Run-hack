@@ -7,7 +7,7 @@ import CoreMotion
 import AVFoundation
 
 // >>> REPLACE-WITH-DEPLOY-URL — set to the Railway URL after the first deploy <<<
-let deployURL = URL(string: "https://REPLACE-WITH-DEPLOY-URL")!
+let deployURL = URL(string: "https://form-coach-production-76e3.up.railway.app")!
 
 @main
 struct AirRunCoachApp: App {
