@@ -141,8 +141,18 @@ export async function pushLive(snap) {
 }
 
 export async function fetchLive() {
+  // paired stream first; when it has nothing, fall back to the freshest
+  // telemetry stream on ANY device — live mirroring must not silently depend
+  // on the pairing step having happened
   try {
     const r = await fetch(`${apiBase()}/live/${getKey()}`, { cache: 'no-store' });
+    if (r.ok) {
+      const paired = await r.json();
+      if (paired.live) return paired;
+    }
+  } catch { /* fall through */ }
+  try {
+    const r = await fetch(`${apiBase()}/live-any`, { cache: 'no-store' });
     if (!r.ok) return { live: false, snap: null };
     return await r.json();
   } catch { return { live: false, snap: null }; }

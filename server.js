@@ -160,6 +160,34 @@ async function handleLive(req, res, url) {
   }));
 }
 
+// ---- /live-any: freshest run on ANY device, no pairing needed --------------
+// The paired /live/<key> mirror needs both devices to share a key first — one
+// more step that can silently not have happened. Telemetry already streams
+// every 5 s keyed only by slot, so the freshest telemetry line IS a live view
+// of whatever run is happening. Zero setup; the mirror falls back to this.
+async function handleLiveAny(res) {
+  let best = null;
+  for (const n of [1, 2, 3]) {
+    try {
+      const file = join(TELEMETRY_DIR_LOCAL, `runner-${n}.jsonl`);
+      const st = await stat(file);
+      if (!best || st.mtimeMs > best.mtimeMs) best = { n, mtimeMs: st.mtimeMs, file };
+    } catch { /* no stream for this slot */ }
+  }
+  const ageMs = best ? Date.now() - best.mtimeMs : null;
+  let snap = null;
+  if (best && ageMs < 120000) {
+    try {
+      // last line of the freshest stream = the current state of that run
+      const buf = await readFile(best.file, 'utf8');
+      const lines = buf.trimEnd().split('\n');
+      snap = JSON.parse(lines[lines.length - 1]);
+    } catch { snap = null; }
+  }
+  res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+  res.end(JSON.stringify({ live: !!snap && ageMs < 20000, ageMs, slot: best?.n ?? null, snap }));
+}
+
 // ---- device registry: which phone is on which build -----------------------
 // The Runner 1/2/3 UI is gone, so phones would otherwise all post to one
 // telemetry stream. Each device self-registers on app load and is handed a
@@ -285,6 +313,7 @@ const server = createServer(async (req, res) => {
     const p0 = new URL(req.url, 'http://x').pathname;
     if (req.method === 'POST' && p0 === '/hello') { await handleHello(req, res); return; }
     if (p0.startsWith('/sync/')) { await handleSync(req, res, new URL(req.url, 'http://x')); return; }
+    if (p0 === '/live-any') { await handleLiveAny(res); return; }
     if (p0.startsWith('/live/')) { await handleLive(req, res, new URL(req.url, 'http://x')); return; }
 
     try {
