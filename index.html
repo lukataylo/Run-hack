@@ -172,10 +172,6 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
       <span>FORM/COACH</span>
     </div>
   </div>
-  <div class="eyebrow" style="margin-bottom:8px">Runner</div>
-  <div class="seg" id="user-seg">
-    <button data-u="1">Runner 1</button><button data-u="2">Runner 2</button><button data-u="3">Runner 3</button>
-  </div>
   <!-- full-bleed: card matches the AI render's near-black so the image edge
        vanishes; the slot bleeds through the card padding -->
   <div class="card" id="formmap-card" style="margin-top:14px;background:#0a0a0c;overflow:hidden">
@@ -504,7 +500,7 @@ const coachBot = mountBot($('coach-bot'));
 const setBots = (s) => { try { liveBot?.setState(s); coachBot?.setState(s); } catch {} };
 
 /* ---------- state ---------- */
-let user = localStorage.getItem('user') || '1';
+const user = '1'; // single-runner app (profiles removed)
 let mode = localStorage.getItem('mode') || 'hand';
 let voiceOn = true, musicOn = false; // voiceOn deliberately unpersisted
 let motivateOn = localStorage.getItem('motivate') === '1'; // persisted, default off
@@ -547,12 +543,8 @@ $('btn-history').onclick = () => show('insights');
 $('btn-ins-back').onclick = () => show(running ? 'live' : 'home');
 
 /* ---------- home widgets ---------- */
-function paintUserSeg() {
-  for (const b of document.querySelectorAll('#user-seg button')) b.classList.toggle('on', b.dataset.u === user);
-}
-for (const b of document.querySelectorAll('#user-seg button'))
-  b.onclick = () => { user = b.dataset.u; localStorage.setItem('user', user); paintUserSeg(); paintInsights(); loadGoal(); paintGoal(); paintFormMap(); };
-paintUserSeg();
+// single-runner app: the relay Runner 1/2/3 separation was removed; user is
+// fixed at '1' (existing runs saved under runs:1 keep working)
 
 function paintModeSeg() {
   for (const b of document.querySelectorAll('#mode-seg button')) b.classList.toggle('on', b.dataset.m === mode);
