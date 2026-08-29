@@ -673,12 +673,18 @@ export function scoreCueResponse(timeline, cue) {
     baseSd: null, respMean: null, deltaPct: null, improved: false, latencyS: null,
     scored: false,
   };
-  if (before.length < C.MIN_PTS || resp.length < C.MIN_PTS) return base;
+  // the band is drawn even when the response cannot be SCORED — an unscored
+  // chart still reads better with the runner's own baseline behind it
+  let baseSd = null;
+  if (before.length >= 2) {
+    const bm = meanV(before);
+    let b2 = 0;
+    for (const p of before) b2 += (p.v - bm) * (p.v - bm);
+    baseSd = Math.sqrt(b2 / before.length);
+  }
+  if (before.length < C.MIN_PTS || resp.length < C.MIN_PTS) return { ...base, baseSd };
 
   const baseMean = meanV(before);
-  let b2 = 0;
-  for (const p of before) b2 += (p.v - baseMean) * (p.v - baseMean);
-  const baseSd = Math.sqrt(b2 / before.length);
   const respMean = meanV(resp);
   const dir = meta.goodWhenLower ? -1 : 1;
   if (!(Math.abs(baseMean) > 1e-9)) return { ...base, baseSd, respMean };
@@ -751,7 +757,13 @@ function drawCueResponse(canvas, r) {
     vMin = Math.min(vMin, r.baseMean - r.baseSd);
     vMax = Math.max(vMax, r.baseMean + r.baseSd);
   }
-  const span = (vMax - vMin) || 1;
+  // a metric that never moved must not be pinned to the floor of the chart —
+  // give a degenerate range a symmetric window around its own value
+  if (!(vMax - vMin > 1e-9)) {
+    const c0 = vMax, padV = Math.max(Math.abs(c0) * 0.05, 1e-3);
+    vMin = c0 - padV; vMax = c0 + padV;
+  }
+  const span = vMax - vMin;
   const y = (v) => h - pad - ((v - vMin) / span) * (h - pad * 2);
 
   // baseline band (mean ± SD) drawn across the FULL width, not just the

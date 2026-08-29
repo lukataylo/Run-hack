@@ -82,6 +82,130 @@ sway:      "Your head is rocking. Eyes forward, run tall."
 Each is one breath long, imperative first, reason second — hearable and
 actionable at threshold pace.
 
+## Metrics evidence (the reported, non-cued metrics)
+
+The four faults above drive the voice. The metrics below are **measured and
+reported, never spoken** — they are the run analysis, not the coach. Each one
+gets its citation, its one-line algorithm, and an honest confidence rating for
+what a **~25 Hz single-bud AirPods stream** can actually support.
+
+### Harmonic ratio — gait smoothness / step-to-step symmetry
+
+- **What it is.** How cleanly your two steps match each other, as one number.
+  Higher = smoother, more symmetric.
+- **Citation.** Bellanca, Lowry, VanSwearingen, Brach & Redfern 2013, *Harmonic
+  ratios: a quantification of step to step symmetry* (J Biomech 46:828–831),
+  building on Menz, Lord & Fitzpatrick 2003, *Acceleration patterns of the head
+  and pelvis when walking on level and irregular surfaces* (Gait & Posture
+  18:35–46) — which is also the paper that establishes measuring gait from an
+  accelerometer **at the head** in the first place.
+- **Algorithm.** Stride frequency `f = (spm/60)/2`; a Goertzel bank gives the
+  amplitude at `k·f` for `k = 1..8` on the Hann-windowed, mean-removed vertical
+  series; `HR = Σ even / Σ odd` (the mediolateral axis inverts to `odd / even`).
+  Two identical steps repeat every half stride, so all their energy sits in the
+  even harmonics; asymmetry leaks it into the odd ones.
+- **Confidence at 25 Hz single-ear: MEDIUM for trend, ZERO for absolute.** The
+  8th harmonic must sit under the 12.5 Hz Nyquist, so `harmonicRatio()` returns
+  `null` above ~187 spm — a fast runner simply gets no number, which is the
+  honest outcome. And there are **no published harmonic-ratio norms for
+  running**, none at all at the ear: the literature is walking, at the pelvis or
+  trunk. So the value is a **self-baseline** only ("smoother than your own
+  usual"), and nothing is ever cued from it.
+
+### Stride-time variability (CV%) — rhythm consistency
+
+- **What it is.** How much your stride time wanders, as a coefficient of
+  variation. Rises with fatigue and with injury history.
+- **Citation.** Meardon, Hamill & Derrick 2011, *Running injury and stride time
+  variability over a prolonged run* (Gait & Posture 33:36–40): healthy running
+  sits at roughly **1–3% CV**, and CV rises over a prolonged run — more so in
+  runners with an injury history.
+- **Algorithm.** Footfalls are the local maxima of the vertical series; each
+  peak is refined by **parabolic interpolation over its 3 samples** for
+  sub-sample timing. A stride is **two** steps, so stride time is the interval
+  between *alternate* footfalls; `CV% = SD/mean × 100`.
+- **Confidence at 25 Hz single-ear: TREND ONLY — the absolute number is
+  inflated and must never be quoted against Meardon.** At 25 Hz a sample is
+  40 ms. Timing a peak by its raw sample index quantizes to ±20 ms on a ~700 ms
+  stride, which **manufactures a ~5–6% CV floor out of pure sampling, before any
+  biology**. Parabolic interpolation cuts that floor to about **1.5–2%** — still
+  the same order as the 1–3% signal we are trying to see. Because the floor is
+  constant across a run it cancels out of a comparison, so **first-quarter vs
+  last-quarter (`fatigue.cvTrendPct`) is valid and the raw value is not.**
+  (The same interpolation improves the asymmetry index for free: discrete
+  sampling used to clip alternate peaks by different amounts and inflate the
+  Robinson index on its own.)
+
+### Head orientation stability (wobble) — pitch/roll RMS
+
+- **What it is.** How much your head rotates about its own average attitude,
+  in degrees. The thing no wrist or hand sensor can measure.
+- **Citation.** Pozzo, Berthoz & Lefort 1990, *Head stabilization during various
+  locomotor tasks in humans* (Exp Brain Res 82:97–106): during locomotion the
+  head is actively stabilized in space by the vestibulocollic reflex, holding
+  pitch and roll within roughly **7° peak-to-peak**. Sustained excursion past
+  ~10° is therefore defensible as a fault.
+- **Algorithm.** Pitch and roll per sample from the AirPods **attitude
+  quaternion**, averaged circularly (so a ±180° wrap cannot fake a swing);
+  `wobbleDeg = sqrt(RMS_pitch² + RMS_roll²)` about the window means.
+- **Confidence at 25 Hz single-ear: GOOD on the quaternion path, WORTHLESS on
+  the fallback.** Orientation is a low-frequency quantity — 25 Hz is ample, and
+  CoreMotion always ships an attitude, so the real sensor takes the good path.
+  The gravity-vector fallback (used when `q*` is absent) **conflates "the head
+  tilted" with "the body accelerated"**, because a raw `g*` vector is gravity
+  *plus* linear acceleration and during running those are the same order: on
+  synthetic 8 m/s² running it reads ~19° where the true tilt is 0°. Low-passing
+  that away would also remove the stride-band head motion we want, so there is
+  no fix — it is a degraded-mode readout. `headStability()` returns a `source`
+  field; **trust `'quaternion'` only.** `CONFIG.HEAD_WOBBLE_MAX = 10` is a
+  **calibration knob**: ours is an RMS, Pozzo's is a peak-to-peak, so the
+  mapping between them is approximate until fixtures settle it.
+
+### Run-level fatigue (`run.fatigue`, computed once at stop)
+
+- **Cadence drift** — Hunter & Smith 2007, *Preferred and optimal stride
+  frequency, stiffness and economy: changes with fatigue during a 1-h
+  high-intensity run* (Eur J Appl Physiol 100:653–661): stride frequency drifts
+  **down** with fatigue. We report a least-squares slope in **spm per 10 min**.
+  Honest caveat: the red flag is a falling cadence **at constant pace**, and the
+  slope alone cannot see pace — read it beside km/estKmh.
+- **Fatigue onset** — first second at which a trailing 3-minute mean of cadence
+  departs by more than 2 SD from the first-10-minute baseline. `null` under
+  ~12 minutes of run, and `null` when the baseline has no spread to test
+  against. A short run has no fatigue story and must say so.
+- **Head impact drift** — Derrick 2002 (*Energy absorption of impacts during
+  running at various stride lengths*) and the shock-attenuation literature: the
+  head's impact acceleration is **regulated to stay roughly constant** while
+  tibial impact varies with stride length, so an **upward drift at the head** is
+  a real signal that the regulation is failing. Reported as last-quarter vs
+  first-quarter %. **Naming discipline: this is "head impact drift", never
+  "shock attenuation".** Shock attenuation is a tibia-to-head *transfer ratio*
+  and needs a second sensor on the shank, which we do not have. Any UI or copy
+  calling it shock attenuation is wrong.
+
+### The "Did the coaching work?" view
+
+Per cue, the cued metric's own 60 s before it (baseline mean ± SD) against the
+**30–90 s window after** it, scored in the improving direction for that fault.
+The 30–90 s window is not arbitrary: it is the same motor-learning consolidation
+window as the 90 s same-fault repeat rule above (~300 strides). Measuring the
+first 30 s would measure the runner *reacting*, not the correction *holding*.
+Honest caveat: this is **observational, n = 1, uncontrolled**. A cadence rise
+after a cadence cue may be the cue landing, or a downhill, or the runner
+speeding up anyway. It is a conversation starter, not evidence of causation.
+
+### Ground contact time — deliberately NOT shipped
+
+GCT is the metric people ask for next, and **it is not computable from this
+sensor.** Detecting foot strike and toe-off from head-mounted acceleration means
+resolving the impact transient, whose energy sits **well above our 12.5 Hz
+Nyquist**. The validated ear-worn GCT work samples at **800 Hz**;
+`CMHeadphoneMotionManager` gives us **~25 Hz, one bud at a time**. That is a
+32× shortfall in bandwidth, not a tuning problem — no filter, no interpolation
+and no model recovers a transient that was never sampled. We could emit a
+plausible-looking number, and it would be fiction. We do not ship it, and this
+paragraph exists so nobody adds it later thinking it was an oversight.
+
 ## Honest limitations
 
 - Thresholds are literature-anchored but not yet fixture-tuned; the recorded
@@ -90,6 +214,12 @@ actionable at threshold pace.
   until validated with a deliberate-limp recording.
 - Head-mode cadence is coarser (~25 Hz single-bud stream, neck damping); the
   head's real contribution is sway.
+- Harmonic ratio has no published running norms and returns `null` above
+  ~187 spm (Nyquist); stride-time CV is inflated by 25 Hz quantization and is
+  trend-only; head wobble is trustworthy only on the quaternion path. See
+  "Metrics evidence" above for each.
+- Ground contact time is **not computable at 25 Hz** and is deliberately not
+  shipped — the validated ear-worn study used 800 Hz.
 - Goal runs: GPS accuracy is ±10–30 m and `watchPosition` fixes arrive at
   ~1 Hz, so 100 m goals are coarse — treat sub-400 m goals as demo-grade, and
   timing precision is bounded by the fix cadence. When GPS is stale the goal
