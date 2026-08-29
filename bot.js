@@ -16,13 +16,21 @@ const BLINK = {
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
+// point loop -> SVG path data
+function pathD(pts) {
+  let d = '';
+  for (let i = 0; i < pts.length; i++) d += (i ? 'L' : 'M') + pts[i][0].toFixed(1) + ' ' + pts[i][1].toFixed(1);
+  return d + 'Z';
+}
+
 export function mountBot(el) {
+  // paths start with the idle expression drawn — no invisible first frame
   el.innerHTML = `
     <svg viewBox="0 0 240 240" style="display:block;width:100%;height:100%">
       <rect x="22" y="34" width="196" height="172" rx="62"
         fill="#17171a" stroke="rgba(244,244,245,0.08)" stroke-width="1.5"/>
-      <path fill="${ACCENT}"/>
-      <path fill="${ACCENT}"/>
+      <path fill="${ACCENT}" d="${pathD(EXPRESSIONS.idle[0])}"/>
+      <path fill="${ACCENT}" d="${pathD(EXPRESSIONS.idle[1])}"/>
     </svg>`;
   const paths = el.querySelectorAll('path');
 
@@ -40,7 +48,7 @@ export function mountBot(el) {
   let gx = 0, gy = 0, gtx = 0, gty = 0, gazeAt = 0;
 
   let last = Date.now();
-  const timer = setInterval(() => {
+  setInterval(() => {
     const now = Date.now();
     const dt = Math.min((now - last) / 1000, 0.1); // clamp: a throttled tab must not explode the spring
     last = now;
@@ -106,7 +114,7 @@ export function mountBot(el) {
     blinkAt = rand(...BLINK[name]);
   }
 
-  return { setState, get state() { return state; }, destroy() { clearInterval(timer); } };
+  return { setState, get state() { return state; } };
 }
 
 function clone(expr) { return expr.map(eye => eye.map(p => [p[0], p[1]])); }

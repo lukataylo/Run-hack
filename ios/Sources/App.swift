@@ -29,6 +29,9 @@ struct WebShell: UIViewRepresentable {
         cfg.allowsInlineMediaPlayback = true
         cfg.mediaTypesRequiringUserActionForPlayback = []
         cfg.userContentController.add(context.coordinator, name: "say")
+        // offline fallback: ES modules don't execute over file://, so the
+        // bundled app is served over a custom scheme instead
+        cfg.setURLSchemeHandler(BundleSchemeHandler(), forURLScheme: "formcoach")
         let web = WKWebView(frame: .zero, configuration: cfg)
         web.navigationDelegate = context.coordinator
         web.uiDelegate = context.coordinator
@@ -75,6 +78,20 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
         try? s.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers, .mixWithOthers])
         try? s.setActive(true)
         location.requestWhenInUseAuthorization()
+        // Headphone motion across backgrounding: stop the stream when the app
+        // backgrounds and restart it on foreground. UIBackgroundModes=audio
+        // keeps the JS alive for voice; restarting motion on foreground is
+        // enough for the demo.
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.motion.stopDeviceMotionUpdates()
+        }
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.startHeadMotion()
+        }
     }
 
     // "say" bridge — survives a locked screen, unlike web speechSynthesis
@@ -86,6 +103,9 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        // only a SUCCESSFUL bundled load closes the fallback door — a failed
+        // one may retry once
+        if web?.url?.scheme == "formcoach" { loadedFallback = true }
         startHeadMotion()
     }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
@@ -94,12 +114,28 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         loadFallback()
     }
+    // a reachable server can still serve an error page: treat a >=400 main-frame
+    // response as unreachable and fall back to the bundle
+    func webView(_ webView: WKWebView,
+                 decidePolicyFor navigationResponse: WKNavigationResponse,
+                 decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        if navigationResponse.isForMainFrame,
+           let http = navigationResponse.response as? HTTPURLResponse,
+           http.statusCode >= 400 {
+            loadFallback()
+            decisionHandler(.cancel)
+            return
+        }
+        decisionHandler(.allow)
+    }
 
-    // offline cold-start: load the bundled page once if the deploy is unreachable
+    // offline cold-start: load the bundled page (custom scheme — ES modules
+    // don't run over file://) if the deploy is unreachable; at most 2 attempts
+    private var fallbackAttempts = 0
     func loadFallback() {
-        guard !loadedFallback, let url = Bundle.main.url(forResource: "index", withExtension: "html") else { return }
-        loadedFallback = true
-        web?.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+        guard !loadedFallback, fallbackAttempts < 2 else { return }
+        fallbackAttempts += 1
+        web?.load(URLRequest(url: URL(string: "formcoach://app/index.html")!))
     }
 
     // AirPods motion → window.__head(sample). ONE bud at a time (~25 Hz) by
@@ -122,4 +158,38 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
             self.web?.evaluateJavaScript(js, completionHandler: nil)
         }
     }
+}
+
+// Serves the bundled web app under formcoach://app/… with correct MIME types.
+// Top-level resources sit flat in the bundle; vendor/audio/assets are folder
+// references, so a plain resourceURL path append resolves both.
+final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
+    private static let mime: [String: String] = [
+        "html": "text/html", "js": "text/javascript", "mjs": "text/javascript",
+        "css": "text/css", "json": "application/json", "png": "image/png",
+        "svg": "image/svg+xml", "mp3": "audio/mpeg", "glb": "model/gltf-binary",
+        "jsonl": "application/x-ndjson", "ico": "image/x-icon",
+    ]
+
+    func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
+        guard let url = task.request.url else { return }
+        var path = url.path
+        if path.isEmpty || path == "/" { path = "/index.html" }
+        let file = Bundle.main.resourceURL?.appendingPathComponent(String(path.dropFirst()))
+        guard let file, let data = try? Data(contentsOf: file) else {
+            task.didReceive(HTTPURLResponse(url: url, statusCode: 404, httpVersion: "HTTP/1.1",
+                                            headerFields: ["Content-Type": "text/plain"])!)
+            task.didReceive(Data("not found".utf8))
+            task.didFinish()
+            return
+        }
+        let type = Self.mime[file.pathExtension.lowercased()] ?? "application/octet-stream"
+        task.didReceive(HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1",
+                                        headerFields: ["Content-Type": type,
+                                                       "Content-Length": String(data.count)])!)
+        task.didReceive(data)
+        task.didFinish()
+    }
+
+    func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {}
 }

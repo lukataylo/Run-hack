@@ -4,9 +4,8 @@
 // unlocks a reward arp. Everything is C minor pentatonic melodically; the pad
 // progression Cm7-Abmaj7-Eb-Bb is fixed by spec.
 //
-// Contract (frozen): create(opts) -> { start, stop, update, onCue, duck,
-// running } plus module-level singleton proxies. update() is called at ~1 Hz
-// and must tolerate partial or missing metrics.
+// Contract: create() -> { start, stop, update, onCue, duck, running }.
+// update() is called at ~1 Hz and must tolerate partial or missing metrics.
 
 let Tone = null; // set on first start() via dynamic import of the UMD vendor build
 
@@ -34,7 +33,7 @@ const ARPS = [ // reward layer, 16th steps (null = rest); rotated every 16 bars
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const dbGain = db => Math.pow(10, db / 20);
 
-export function create(opts = {}) {
+export function create() {
   let running = false, built = false;
 
   // smoothed metrics (EMA); sensible mid-run defaults until real data arrives
@@ -226,6 +225,14 @@ export function create(opts = {}) {
       Tone.Transport.stop();
       Tone.Transport.cancel();
       nodes.loops.forEach(l => l.stop());
+      // reset reward-layer state so the next run starts locked — otherwise a
+      // strong finish carries the arp straight into the next run's warm-up
+      arpOn = false;
+      add9 = false;
+      barsAbove80 = 0;
+      barsBelow70 = 0;
+      lastLayerChangeBar = -8;
+      nodes.arpGain.gain.value = 0;
     },
 
     // ~1 Hz from the app loop; metrics may be partial/absent - EMA only what arrived
@@ -257,12 +264,3 @@ export function create(opts = {}) {
     get running() { return running; },
   };
 }
-
-// Convenience singleton so `if (window.music) music.start()` style guards work.
-let inst = null;
-function ensure() { return (inst ??= create()); }
-export const start = () => ensure().start();
-export const stop = () => ensure().stop();
-export const update = m => ensure().update(m);
-export const onCue = () => ensure().onCue();
-export const duck = (db, holdS) => ensure().duck(db, holdS);

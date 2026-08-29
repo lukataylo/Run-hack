@@ -2,3 +2,4 @@
 node_modules/
 ios/AirRunCoach.xcodeproj/
 ios/DerivedData/
+ios/Info.plist

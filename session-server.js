@@ -6,8 +6,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const DIR = '/tmp/telemetry';
-const MAX_BODY = 512 * 1024;       // 512 KB per POST
+// overridable so the self-test (and tests generally) never pollute live race telemetry
+let DIR = process.env.TELEMETRY_DIR || '/tmp/telemetry';
+const MAX_BODY = 512 * 1024;       // 512 KB per POST (bytes)
 const MAX_FILE = 20 * 1024 * 1024; // stop appending past 20 MB
 let dirMade = false;
 
@@ -17,14 +18,9 @@ function ensureDir() {
 
 function filePath(n) { return path.join(DIR, `runner-${n}.jsonl`); }
 
-function cors(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
-
+// CORS + OPTIONS live in server.js, which decorates every response before
+// handleTelemetry is called — no duplicate headers here.
 function json(res, code, obj) {
-  cors(res);
   res.writeHead(code, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(obj));
 }
@@ -44,16 +40,24 @@ function countLines(fp) {
 }
 
 // Last line without reading the whole file: tail-read up to 64 KB.
+// Buffers are concatenated as bytes and decoded once — per-chunk string concat
+// corrupts multi-byte UTF-8 split across chunk boundaries.
+// Returns null when the tail window holds no complete line (a >64 KB line
+// would otherwise be served as a mid-line fragment).
 function lastLine(fp, size) {
   return new Promise((resolve, reject) => {
     const start = Math.max(0, size - 65536);
-    let data = '';
+    const chunks = [];
     const s = fs.createReadStream(fp, { start });
-    s.on('data', (b) => { data += b; });
+    s.on('data', (b) => { chunks.push(b); });
     s.on('error', reject);
     s.on('end', () => {
+      const data = Buffer.concat(chunks).toString('utf8');
+      // tail window larger than the window start with no newline: we cannot
+      // know where the line begins — refuse rather than return a fragment
+      if (start > 0 && !data.includes('\n')) return resolve(null);
       const lines = data.split('\n').filter((l) => l.trim().length > 0);
-      resolve(lines.length ? lines[lines.length - 1] : '');
+      resolve(lines.length ? lines[lines.length - 1] : null);
     });
   });
 }
@@ -64,13 +68,6 @@ export async function handleTelemetry(req, res) {
   try { url = new URL(req.url, 'http://x'); } catch { return false; }
   const parts = url.pathname.split('/').filter(Boolean);
   if (parts[0] !== 'telemetry') return false;
-
-  if (req.method === 'OPTIONS') {
-    cors(res);
-    res.writeHead(204);
-    res.end();
-    return true;
-  }
 
   // GET /telemetry — list runners that have data, with line counts
   if (parts.length === 1 && req.method === 'GET') {
@@ -94,12 +91,17 @@ export async function handleTelemetry(req, res) {
   const fp = filePath(n);
 
   if (req.method === 'POST') {
-    let body = '';
+    // collect Buffers and decode once at parse time — `body += chunk` string
+    // concat corrupts multi-byte UTF-8 split across chunk boundaries, and the
+    // cap must count BYTES, not JS string length
+    const chunks = [];
+    let bytes = 0;
     let dead = false;
     req.on('data', (chunk) => {
       if (dead) return;
-      body += chunk;
-      if (body.length > MAX_BODY) {
+      chunks.push(chunk);
+      bytes += chunk.length;
+      if (bytes > MAX_BODY) {
         dead = true;
         json(res, 413, { error: 'body too large' });
         req.destroy();
@@ -108,15 +110,19 @@ export async function handleTelemetry(req, res) {
     req.on('end', () => {
       if (dead) return;
       let obj;
-      try { obj = JSON.parse(body); } catch {
+      try { obj = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch {
         return json(res, 400, { error: 'invalid JSON' });
       }
       try {
         ensureDir();
         let size = 0;
         try { size = fs.statSync(fp).size; } catch { /* new file */ }
-        if (size > MAX_FILE) return json(res, 200, { ok: false, capped: true });
-        fs.appendFileSync(fp, JSON.stringify(obj) + '\n');
+        const line = JSON.stringify(obj) + '\n';
+        // check BEFORE appending so the file can never blow past the cap
+        if (size + Buffer.byteLength(line) > MAX_FILE) {
+          return json(res, 507, { ok: false, capped: true, error: 'telemetry file full' });
+        }
+        fs.appendFileSync(fp, line);
         json(res, 200, { ok: true });
       } catch (e) {
         json(res, 500, { error: String(e && e.message) });
@@ -135,7 +141,12 @@ export async function handleTelemetry(req, res) {
     if (url.searchParams.get('latest') === '1') {
       try {
         const line = await lastLine(fp, st.size);
-        cors(res);
+        // empty file, or no complete line in the tail window: a JSON error,
+        // never a bare "\n" or a mid-line fragment with a 200
+        if (line == null) {
+          json(res, 500, { error: 'no complete line available' });
+          return true;
+        }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(line + '\n');
       } catch (e) {
@@ -143,7 +154,6 @@ export async function handleTelemetry(req, res) {
       }
       return true;
     }
-    cors(res);
     res.writeHead(200, {
       'Content-Type': 'application/x-ndjson',
       'Content-Length': st.size,
@@ -161,6 +171,10 @@ export async function handleTelemetry(req, res) {
 // ---- self-test: node session-server.js ----
 if (process.argv[1] && process.argv[1].endsWith('session-server.js')) {
   const { createServer } = await import('node:http');
+  const os = await import('node:os');
+  // never pollute live race telemetry: the self-test writes to its own temp dir
+  DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'telemetry-selftest-'));
+  dirMade = false;
   const srv = createServer((req, res) => {
     handleTelemetry(req, res).then((handled) => {
       if (!handled) { res.writeHead(404); res.end('not telemetry'); }
@@ -174,7 +188,7 @@ if (process.argv[1] && process.argv[1].endsWith('session-server.js')) {
       if (!ok) pass = false;
     };
     try {
-      const marker = `selftest-${Date.now()}`;
+      const marker = `selftest-${Date.now()}-émoji✓`; // multi-byte UTF-8 must survive chunking
       const snap = { user: 3, mode: 'hand', km: 1.23, cues: [], timeline: [], t: Date.now(), marker };
 
       let r = await fetch(`${base}/telemetry/3`, { method: 'POST', body: JSON.stringify(snap) });
@@ -198,8 +212,8 @@ if (process.argv[1] && process.argv[1].endsWith('session-server.js')) {
       r = await fetch(`${base}/telemetry/3`, { method: 'POST', body: 'not json' });
       check(r.status === 400, 'invalid JSON rejected');
 
-      r = await fetch(`${base}/telemetry/3`, { method: 'OPTIONS' });
-      check(r.status === 204 && r.headers.get('access-control-allow-origin') === '*', 'OPTIONS + CORS');
+      r = await fetch(`${base}/telemetry/3`, { method: 'DELETE' });
+      check(r.status === 405, 'DELETE rejected 405');
 
       r = await fetch(`${base}/other`);
       check(r.status === 404 && (await r.text()) === 'not telemetry', 'non-telemetry path falls through');

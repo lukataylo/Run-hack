@@ -1,6 +1,10 @@
 // replay.js — the entire test suite. `npm run check`, plain node, <1s, exit 1 on failure.
 import { analyze, Coach, CONFIG, CUES } from './coach.js';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+
+// fixtures/ lives beside this script — resolve from the script, not cwd
+const FIXTURES = join(import.meta.dirname, 'fixtures');
 
 let pass = 0, fail = 0;
 function check(name, ok, detail = '') {
@@ -210,12 +214,60 @@ const tick = (over = {}) => ({ cadence: 172, bounce: 8, impact: 1.5, asym: 0.03,
   check('pipeline: slow run cues cadence end-to-end', cues.length >= 1 && cues[0].fault === 'cadence');
 }
 
+// --- garbage input never throws, never fabricates metrics --------------------
+{
+  const good = win(genRun({ durS: 10 }), 10);
+
+  // NaN fields
+  const nan = good.map((s, i) => (i % 7 === 0 ? { ...s, ax: NaN, gy: NaN } : s));
+  let m = null, threw = false;
+  try { m = analyze(nan, 'hand'); } catch { threw = true; }
+  check('NaN samples: no throw, moving=false, finite score',
+    !threw && m.moving === false && Number.isFinite(m.score));
+
+  // identical timestamps
+  const flat = good.map((s) => ({ ...s, t: 5000 }));
+  threw = false;
+  try { m = analyze(flat, 'hand'); } catch { threw = true; }
+  check('identical timestamps: no throw, moving=false, finite score',
+    !threw && m.moving === false && Number.isFinite(m.score));
+
+  // a stray wall-clock epoch timestamp in a performance.now() stream
+  const stray = good.map((s, i) => (i === good.length - 1 ? { ...s, t: 1.7e12 } : s));
+  threw = false;
+  try { m = analyze(stray, 'hand'); } catch { threw = true; }
+  check('stray epoch timestamp: no throw, moving=false, finite score',
+    !threw && m.moving === false && Number.isFinite(m.score));
+}
+
+// --- trimmed mean rejects a wild outlier (via Coach.smoothed) ----------------
+{
+  const c = new Coach('hand');
+  c.hist.cadence = [172, 1e9, 170, 171, 173, 172];
+  const sm = c.smoothed().cadence;
+  check(`trimmed mean rejects 1e9 outlier (got ${sm.toFixed(1)})`, sm > 160 && sm < 185);
+}
+
+// --- baseline poisoning: fast warm-up then healthy cruise never nags ---------
+{
+  const c = new Coach('hand');
+  let cadCues = 0;
+  // 5 min of 200 spm warm-up strides fills the whole baseline window…
+  for (let s = 0; s < 300; s++) c.update(tick({ cadence: 200 }), s * 1000);
+  // …then a healthy 180 spm cruise: the poisoned baseline must NOT cue
+  for (let s = 300; s < 900; s++) {
+    const cue = c.update(tick({ cadence: 180 }), s * 1000);
+    if (cue && cue.fault === 'cadence') cadCues++;
+  }
+  check('warm-up strides never poison the cadence baseline (0 cues at 180 spm)', cadCues === 0);
+}
+
 // --- fixture replay (fixtures/ owned by Track C — skip gracefully) -----------
-if (existsSync('fixtures')) {
-  const files = readdirSync('fixtures').filter((f) => f.endsWith('.jsonl'));
+if (existsSync(FIXTURES)) {
+  const files = readdirSync(FIXTURES).filter((f) => f.endsWith('.jsonl'));
   for (const f of files) {
     try {
-      const lines = readFileSync(`fixtures/${f}`, 'utf8').split('\n').filter(Boolean);
+      const lines = readFileSync(join(FIXTURES, f), 'utf8').split('\n').filter(Boolean);
       const samples = lines.map((l) => JSON.parse(l)).filter((x) => typeof x.t === 'number');
       if (samples.length < 64) { console.log(`SKIP  fixture ${f} (too short)`); continue; }
       const mode = f.includes('ears') ? 'ears' : 'hand';

@@ -102,23 +102,6 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
 .scr-head{display:flex;align-items:center;margin-bottom:14px;position:relative}
 .scr-head .title{position:absolute;left:0;right:0;text-align:center;font-weight:700;pointer-events:none}
 .scr-head button{color:var(--text);z-index:1}
-#hero-card{position:relative;overflow:hidden;background:var(--grad);border-radius:18px;padding:20px;color:#fff;min-height:130px}
-#hero-card.green{background:linear-gradient(135deg,#0f8a4c,#3ddc84)}
-#hero-card .rings{position:absolute;right:-40px;top:-40px;width:220px;height:220px;pointer-events:none;opacity:.5}
-#hero-eyebrow{font-size:10px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;opacity:.85}
-#hero-line{font-size:24px;font-weight:800;letter-spacing:-.02em;line-height:1.15;margin-top:8px;max-width:250px}
-#focus-row{margin-top:12px}
-.chart-slot{height:130px;margin-top:10px;border-radius:10px;background:var(--card2);
-  display:flex;align-items:center;justify-content:center;color:#5c5c64;font-size:11px;letter-spacing:.12em;text-transform:uppercase;overflow:hidden}
-.chart-slot canvas,.chart-slot svg{width:100%;height:100%}
-#summary-row{display:flex;margin-top:12px;padding:14px 8px}
-#summary-row>div{flex:1;text-align:center}
-#summary-row .v{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
-#summary-row .k{font-size:10px;color:var(--dim);letter-spacing:.14em;text-transform:uppercase;margin-top:3px}
-#history-list{margin-top:12px;display:flex;flex-direction:column;gap:8px}
-.hist-row{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:14px;padding:14px 16px}
-.hist-row .chip{width:44px;height:44px;border-radius:12px;background:var(--card2);display:flex;align-items:center;justify-content:center;
-  font-weight:800;font-variant-numeric:tabular-nums;color:var(--good)}
 .placeholder{color:#5c5c64;font-size:12px;text-align:center;padding:18px 8px}
 
 /* ---------- coach ---------- */
@@ -267,50 +250,9 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
     <button id="btn-ins-back"><svg class="ic" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
     <span class="title">Run Analysis</span>
   </div>
-  <!-- Track C's renderInsights fills this container when session.js is present -->
+  <!-- session.js's renderInsights fills this container (charts + history);
+       a quiet note appears here only when session.js is absent -->
   <div id="insights-body"></div>
-  <!-- fallback structure, shown only when session.js is absent -->
-  <div id="ins-fallback">
-  <div id="hero-card">
-    <svg class="rings" viewBox="0 0 200 200">
-      <circle cx="100" cy="100" r="45" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="1.5"/>
-      <circle cx="100" cy="100" r="70" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="1.5"/>
-      <circle cx="100" cy="100" r="95" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="1.5"/>
-    </svg>
-    <div id="hero-eyebrow">Form focus</div>
-    <div id="hero-line">Finish a run to see your analysis.</div>
-  </div>
-  <div class="row" id="focus-row">
-    <div class="card">
-      <div class="eyebrow">Suggested focus</div>
-      <div id="focus-val" style="font-weight:700;margin-top:6px">—</div>
-    </div>
-    <div class="card">
-      <div class="eyebrow">Form score</div>
-      <div id="ins-score" class="num" style="font-size:28px;margin-top:4px">--</div>
-    </div>
-  </div>
-  <div class="card" style="margin-top:12px">
-    <div class="eyebrow">Impact load over time</div>
-    <div class="chart-slot" id="chart-impact">Impact chart</div>
-  </div>
-  <div class="card" style="margin-top:12px">
-    <div class="eyebrow">Cadence</div>
-    <div class="chart-slot" id="chart-cadence">Cadence chart</div>
-  </div>
-  <div class="card" style="margin-top:12px" id="head-card">
-    <div class="eyebrow">Head stability</div>
-    <div class="chart-slot" id="chart-head">Ears-mode runs only</div>
-  </div>
-  <div class="card" id="summary-row">
-    <div><div class="v" id="sum-km">--</div><div class="k">km</div></div>
-    <div><div class="v" id="sum-dur">--</div><div class="k">time</div></div>
-    <div><div class="v" id="sum-cues">--</div><div class="k">cues</div></div>
-    <div><div class="v" id="sum-mode">--</div><div class="k">mode</div></div>
-  </div>
-  </div>
-  <div class="eyebrow" style="margin-top:18px">Activity history</div>
-  <div id="history-list"><div class="placeholder">Past runs appear here.</div></div>
 </section>
 
 <!-- ================= COACH ================= -->
@@ -367,7 +309,7 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
 </div>
 
 <script type="module">
-import { analyze, Coach, verticalSeries, CONFIG } from './coach.js';
+import { analyze, Coach, verticalSeries } from './coach.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -377,6 +319,7 @@ const voice = await import('./voice.js').catch(() => null);
 const botMod = await import('./bot.js').catch(() => null);
 const musicMod = await import('./music.js').catch(() => null);
 const sessionMod = await import('./session.js').catch(() => null);
+const persona = await import('./persona.js').catch(() => null);
 import('./pods3d.js').then((m) => m.mount?.($('pods-slot'))).catch(() => {});
 
 /* ---------- mascots ---------- */
@@ -446,13 +389,12 @@ paintModeSeg();
 
 $('tgl-voice').onclick = () => { voiceOn = !voiceOn; $('tgl-voice').classList.toggle('on', voiceOn); $('btn-voice').classList.toggle('on', voiceOn); };
 $('btn-voice').onclick = () => $('tgl-voice').onclick();
-$('tgl-music').onclick = async () => {
+$('tgl-music').onclick = () => {
+  // the toggle only arms music — playback starts with the run (Start tap is
+  // also a user gesture, so the WebAudio unlock still happens in-gesture)
   musicOn = !musicOn;
   $('tgl-music').classList.toggle('on', musicOn);
-  // music.start() must live inside a tap gesture (WebAudio unlock)
-  if (musicOn && musicMod?.create) {
-    try { music = music || musicMod.create({}); await music.start(); } catch { music = null; }
-  } else if (music) { try { music.stop(); } catch {} }
+  if (!musicOn && music) { try { music.stop(); } catch {} }
 };
 
 /* ---------- dial ---------- */
@@ -490,6 +432,10 @@ function sizeCanvas(c) {
   c.width = r.width * d; c.height = r.height * d;
 }
 function sizeCanvases() { sizeCanvas($('wave')); sizeCanvas($('spark')); }
+window.addEventListener('resize', () => {
+  // only meaningful while the live screen is laid out (display:none → 0 sizes)
+  if ($('scr-live').classList.contains('on')) sizeCanvases();
+});
 
 function paintWave(samples) {
   const c = $('wave'), ctx = c.getContext('2d');
@@ -543,8 +489,39 @@ function speak(text, fault) {
   try { const u = new SpeechSynthesisUtterance(text); u.rate = 1; speechSynthesis.speak(u); } catch {}
 }
 
+/* ---------- persona: "Runway" ---------- */
+// Flavour lines are exempt from cue etiquette but must never crowd a
+// corrective cue: suppressed within 15 s after any cue, and no persona
+// failure may ever touch the run loop.
+let lastCueWallT = -Infinity;
+let greeted = false, praiseHighSince = 0, lastPraiseT = -Infinity, lastKmSpoken = 0;
+function sayPersona(line) {
+  try {
+    if (!line || !line.text || !voiceOn) return;
+    if (Date.now() - lastCueWallT < 15000) return;
+    speak(line.text, line.clip);
+  } catch { /* persona is decoration */ }
+}
+function greet() {
+  if (greeted) return;
+  greeted = true;
+  sayPersona(persona?.pick?.('greet'));
+}
+// App open: in the native shell the say bridge speaks without a gesture. On
+// plain web the load-time attempt may be autoplay-blocked, so the first tap
+// re-greets if nothing is audibly playing.
+try {
+  greet();
+  if (!window.webkit?.messageHandlers?.say) {
+    document.addEventListener('pointerdown', () => {
+      try { if (!window.speechSynthesis?.speaking) { greeted = false; greet(); } } catch {}
+    }, { once: true });
+  }
+} catch { /* never block boot on the greeting */ }
+
 /* ---------- wake lock ---------- */
 async function grabWakeLock() {
+  try { await wakeLock?.release(); } catch { /* already released */ }
   try { wakeLock = await navigator.wakeLock?.request('screen'); } catch {}
 }
 document.addEventListener('visibilitychange', () => {
@@ -553,6 +530,7 @@ document.addEventListener('visibilitychange', () => {
 
 /* ---------- run lifecycle ---------- */
 $('btn-start').onclick = async () => {
+  if (running) return; // double-tap guard — MUST precede any await
   // everything below must stay inside the tap gesture: sensor permission + audio unlock
   let motionDenied = false;
   try {
@@ -569,9 +547,15 @@ $('btn-start').onclick = async () => {
   }
   try { voice?.unlock?.(); } catch {}
   if (!voice) { try { speechSynthesis.speak(new SpeechSynthesisUtterance('')); } catch {} }
-  if (musicOn && music) { try { await music.start(); } catch {} }
+  // playback starts here (in-gesture), not on the Profile toggle
+  if (musicOn && musicMod?.create) {
+    try { music = music || musicMod.create(); await music.start(); } catch { music = null; }
+  }
 
+  try { session?.stop(); } catch {} // defensive: never leak a live GPS watch/beacon
   handBuf = []; impacts = []; cueLog = []; recBuf = []; recording = false;
+  try { head?.reset?.(); } catch {} // stale pre-run ears samples must not seed the first windows
+  lastKmSpoken = 0; praiseHighSince = 0;
   $('btn-rec').classList.remove('on');
   coach = new Coach(mode);
   session = null;
@@ -584,6 +568,7 @@ $('btn-start').onclick = async () => {
   setBots('listening');
   grabWakeLock();
   show('live');
+  sayPersona(persona?.pick?.('runStart')); // exempt from the 20 s cue mute
 };
 
 $('btn-stop').onclick = () => {
@@ -600,31 +585,36 @@ $('btn-stop').onclick = () => {
     cues: cueLog, score: lastMetrics?.score ?? null, km: null,
   };
   setBots(cueLog.length ? 'proud' : 'celebrate');
+  sayPersona(persona?.runEndLine?.(lastRun.score, cueLog.length));
   show('insights');
 };
 
+// ears-mode recording: poll the head buffer (no event stream to hook)
+let lastRecT = 0;
 $('btn-rec').onclick = () => {
   recording = !recording;
   $('btn-rec').classList.toggle('on', recording);
-  if (recording && mode === 'ears') recPollEars();
+  if (recording && mode === 'ears') lastRecT = 0;
 };
-// ears-mode recording: poll the head buffer (no event stream to hook)
-let lastRecT = 0;
-function recPollEars() { lastRecT = 0; }
 
 $('btn-export').onclick = () => {
   const buf = lastRecording || recBuf;
   if (!buf?.length) return;
   const blob = new Blob([buf.map((s) => JSON.stringify(s)).join('\n') + '\n'], { type: 'application/x-ndjson' });
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  a.href = url;
   a.download = `fixture-${mode}-${new Date().toISOString().replace(/[:.]/g, '-')}.jsonl`;
+  // iOS Safari needs the anchor in the DOM, and revoking synchronously can
+  // cancel the download — detach after the download has started
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(a.href);
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
 };
 
 /* ---------- cue handling ---------- */
 function onCue(cue) {
+  lastCueWallT = Date.now(); // persona lines stay quiet for 15 s around a cue
   cueLog.push({ t: Date.now() - runT0, fault: cue.fault, text: cue.text });
   speak(cue.text, cue.fault);
   if (session) { try { session.logCue(cue); } catch {} }
@@ -655,115 +645,89 @@ setInterval(() => {
     for (const s of head.getWindow(1500)) if (s.t > lastRecT) { recBuf.push(s); lastRecT = s.t; }
   }
 
-  const samples = sampleWindow(6000);
-  const m = analyze(samples, mode);
-  lastMetrics = m;
+  // one throwing tick must never silently kill coaching for the rest of the run
+  try {
+    const samples = sampleWindow(6000);
+    const m = analyze(samples, mode);
+    lastMetrics = m;
 
-  paintDial(m.moving ? m.cadence : 0);
-  paintWave(samples);
-  if (m.moving) {
-    $('score-val').textContent = m.score;
-    $('score-note').textContent = m.score >= 85 ? 'Great form' : m.score >= 65 ? 'Decent form' : 'Needs work';
-    $('score-note').className = 'sub ' + (m.score >= 85 ? 'ok' : m.score >= 65 ? 'warn' : 'bad');
-    $('impact-val').textContent = m.impact.toFixed(1);
-    $('impact-val').className = 'num ' + (m.impact > 3 ? 'warn' : 'ok');
-    impacts.push(m.impact);
-    paintBalance(m.balance ?? 0.5);
-    if (!$('cue-line').classList.contains('flash')) setBots(m.score >= 85 ? 'happy' : 'working');
-  } else {
-    $('score-note').textContent = 'Waiting for movement';
-    $('score-note').className = 'sub';
-    setBots('listening');
-  }
-  paintSpark();
+    paintDial(m.moving ? m.cadence : 0);
+    paintWave(samples);
+    if (m.moving) {
+      $('score-val').textContent = m.score;
+      $('score-note').textContent = m.score >= 85 ? 'Great form' : m.score >= 65 ? 'Decent form' : 'Needs work';
+      $('score-note').className = 'sub ' + (m.score >= 85 ? 'ok' : m.score >= 65 ? 'warn' : 'bad');
+      $('impact-val').textContent = m.impact.toFixed(1);
+      $('impact-val').className = 'num ' + (m.impact > 3 ? 'warn' : 'ok');
+      impacts.push(m.impact);
+      paintBalance(m.balance ?? 0.5);
+      if (!$('cue-line').classList.contains('flash')) setBots(m.score >= 85 ? 'happy' : 'working');
 
-  if (session) {
-    try {
-      session.tick(m);
-      if (session.km != null) {
-        $('dist-val').textContent = session.km.toFixed(2);
-        if (session.km > 0.05) {
-          const secPerKm = el / session.km;
-          $('pace-note').textContent = `${Math.floor(secPerKm / 60)}:${String(Math.round(secPerKm % 60)).padStart(2, '0')} /km`;
+      // Runway praise: score ≥85 sustained 120 s, once per 5 min at most,
+      // never within 20 s of a corrective cue
+      try {
+        const now = Date.now();
+        if (m.score >= 85) {
+          if (!praiseHighSince) praiseHighSince = now;
+          if (now - praiseHighSince >= 120000 && now - lastPraiseT >= 300000 &&
+              now - lastCueWallT > 20000) {
+            lastPraiseT = now; praiseHighSince = now;
+            sayPersona(persona?.pick?.('praise'));
+          }
+        } else praiseHighSince = 0;
+      } catch {}
+    } else {
+      // stale numbers must not freeze on screen while stopped at a light
+      $('score-val').textContent = '–';
+      $('impact-val').textContent = '–';
+      $('impact-val').className = 'num';
+      $('score-note').textContent = 'Waiting for movement';
+      $('score-note').className = 'sub';
+      setBots('listening');
+    }
+    paintSpark();
+
+    if (session) {
+      try {
+        session.tick(m);
+        if (session.km != null) {
+          $('dist-val').textContent = session.km.toFixed(2);
+          if (session.km > 0.05) {
+            const secPerKm = el / session.km;
+            $('pace-note').textContent = `${Math.floor(secPerKm / 60)}:${String(Math.round(secPerKm % 60)).padStart(2, '0')} /km`;
+          }
+          const kmFloor = Math.floor(session.km);
+          if (kmFloor > lastKmSpoken) {
+            lastKmSpoken = kmFloor;
+            sayPersona(persona?.kmLine?.(kmFloor));
+          }
         }
-      }
-    } catch {}
-  }
-  if (music) { try { music.update(m); } catch {} }
+      } catch {}
+    }
+    if (music && m.moving) { try { music.update(m); } catch {} }
 
-  const cue = coach.update(m, Date.now());
-  if (cue) onCue(cue);
+    const cue = coach.update(m, Date.now());
+    if (cue) onCue(cue);
+  } catch (e) {
+    console.error('tick failed', e);
+  }
 }, 1000);
 
 /* ---------- insights ---------- */
-function fmtDur(s) { return s == null ? '--' : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
-const FOCUS = {
-  cadence: ['Overstride', 'Fixing overstride is your fastest win', 'Shorten stride slightly'],
-  bounce: ['Bounce', 'Softer landings will save you energy', 'Run softer, drive forward'],
-  sway: ['Head sway', 'A steadier head means a steadier line', 'Eyes forward, run tall'],
-  asymmetry: ['Balance', 'Evening out your stride protects both legs', 'Even out left and right'],
-};
+// session.js's renderInsights owns the whole screen (charts + history).
+// Never called while the screen is display:none — charts need laid-out sizes —
+// so there is no module-load-time paint; show() paints on entry.
 function paintInsights() {
-  const run = lastRun;
-  const hasC = !!sessionMod?.renderInsights;
-  $('ins-fallback').style.display = hasC ? 'none' : '';
-  $('insights-body').style.display = hasC ? '' : 'none';
-  if (!hasC) paintFallbackInsights(run);
-  // Track C fills the charts + history; quiet placeholders otherwise
-  if (hasC) {
-    try {
-      const runs = sessionMod.loadRuns?.(user) || [];
-      sessionMod.renderInsights($('insights-body'), run || runs[0], runs[1] || (run ? runs[0] : undefined));
-      paintHistory(runs);
-    } catch {}
+  const body = $('insights-body');
+  if (!sessionMod?.renderInsights) {
+    body.innerHTML = '<div class="placeholder">No analysis module</div>';
+    return;
   }
+  try {
+    const runs = sessionMod.loadRuns?.(user) || [];
+    sessionMod.renderInsights(body, lastRun || runs[0], runs[1] || (lastRun ? runs[0] : undefined));
+  } catch {}
 }
-function paintHistory(runs) {
-  const list = $('history-list');
-  list.innerHTML = runs.length ? '' : '<div class="placeholder">Past runs appear here.</div>';
-  runs.slice(0, 10).forEach((r) => {
-    const d = document.createElement('div');
-    d.className = 'hist-row';
-    d.innerHTML = `<span class="chip">${r.score ?? '--'}</span>
-      <div><div style="font-weight:700">${r.km != null ? r.km.toFixed(2) + ' km' : 'Run'}</div>
-      <div class="sub">${new Date(r.t0).toLocaleString()} · ${r.mode === 'ears' ? 'Ears' : 'Hand'}</div></div>`;
-    d.onclick = () => { lastRun = r; paintInsights(); };
-    list.appendChild(d);
-  });
-}
-function paintFallbackInsights(run) {
-  // dominant fault from the cue log names the hero headline
-  let dom = null;
-  if (run?.cues?.length) {
-    const counts = {};
-    for (const c of run.cues) counts[c.fault] = (counts[c.fault] || 0) + 1;
-    dom = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
-  }
-  const hero = $('hero-card');
-  if (!run) {
-    hero.classList.remove('green');
-    $('hero-eyebrow').textContent = 'Form focus';
-    $('hero-line').textContent = 'Finish a run to see your analysis.';
-  } else if (dom) {
-    hero.classList.remove('green');
-    $('hero-eyebrow').textContent = FOCUS[dom][0];
-    $('hero-line').textContent = FOCUS[dom][1];
-    $('focus-val').textContent = FOCUS[dom][2];
-  } else {
-    hero.classList.add('green');
-    $('hero-eyebrow').textContent = 'Clean run';
-    $('hero-line').textContent = 'No faults. Your form held all the way.';
-    $('focus-val').textContent = 'Keep doing what you did';
-  }
-  if (run) {
-    $('ins-score').textContent = run.score ?? '--';
-    $('sum-km').textContent = run.km != null ? run.km.toFixed(2) : '--';
-    $('sum-dur').textContent = fmtDur(run.durS);
-    $('sum-cues').textContent = run.cues?.length ?? 0;
-    $('sum-mode').textContent = run.mode === 'ears' ? 'Ears' : 'Hand';
-  }
-}
-paintInsights();
 </script>
 </body>
 </html>

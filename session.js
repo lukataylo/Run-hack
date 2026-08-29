@@ -5,6 +5,7 @@ const TELEMETRY_INTERVAL_MS = 10000;
 const MAX_RUNS_KEPT = 20;
 const GPS_MAX_ACCURACY_M = 30; // ignore fixes worse than this
 const GPS_MAX_JUMP_M = 50;     // ignore teleports
+const GPS_MIN_STEP_M = 2;      // ignore sub-2 m per-fix movements (standstill drift)
 
 // ---------- helpers ----------
 
@@ -57,11 +58,16 @@ export class Session {
         (pos) => {
           try {
             const c = pos.coords;
-            if (c.accuracy > GPS_MAX_ACCURACY_M) return;
+            // accuracy must be a finite number <= threshold — NaN/undefined
+            // fails this comparison and the fix is rejected
+            if (!(c.accuracy <= GPS_MAX_ACCURACY_M)) return;
             if (this._lastFix) {
               const d = haversineM(this._lastFix.latitude, this._lastFix.longitude,
                 c.latitude, c.longitude);
               if (d > GPS_MAX_JUMP_M) { this._lastFix = c; return; }
+              // GPS_MIN_STEP_M: drift at a standstill must not accrue distance
+              // (calibration knob — raise if standing drift still creeps in)
+              if (d < GPS_MIN_STEP_M) return;
               this.km += d / 1000;
             }
             this._lastFix = c;
@@ -79,6 +85,7 @@ export class Session {
     const m = metrics || {};
     const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
     const asym = num(m.asym);
+    const balance = num(m.balance);
     this.timeline.push({
       t: Math.round((Date.now() - this.startedAt) / 1000),
       cadence: num(m.cadence),
@@ -87,9 +94,10 @@ export class Session {
       asym,
       sway: num(m.sway),
       score: num(m.score),
-      // balance-left heuristic: split the asymmetry index around 50/50.
-      // Which side is "left" is uncalibrated until a deliberate-limp fixture.
-      balL: asym == null ? null : Math.round(50 - asym * 50),
+      // prefer the analyzer's real balance (left share 0..1) when present;
+      // fall back to the asymmetry-split heuristic (uncalibrated L/R labels).
+      balL: balance != null ? Math.round(balance * 100)
+        : asym == null ? null : Math.round(50 - asym * 50),
     });
   }
 
@@ -159,9 +167,26 @@ export class Session {
     this._run = run;
     try {
       const key = storageKey(this.user);
-      const runs = loadRuns(this.user);
+      // the seeded demo run is never persisted and never counts against the cap
+      const runs = loadRuns(this.user).filter((r) => r.id !== 'demo');
       runs.unshift(run);
-      localStorage.setItem(key, JSON.stringify(runs.slice(0, MAX_RUNS_KEPT)));
+      const keep = runs.slice(0, MAX_RUNS_KEPT);
+      try {
+        localStorage.setItem(key, JSON.stringify(keep));
+      } catch (e) {
+        // quota: strip heavy timelines from all but the 2 newest runs and retry
+        // once (avg/score/cues/km/duration survive, so history stays useful)
+        if (e && (e.name === 'QuotaExceededError' || e.code === 22)) {
+          const slim = keep.map((r, i) => {
+            if (i < 2) return r;
+            const { timeline, ...rest } = r;
+            return rest;
+          });
+          localStorage.setItem(key, JSON.stringify(slim));
+        } else {
+          throw e;
+        }
+      }
     } catch { /* quota/private mode: the run object is still returned */ }
     return run;
   }
@@ -169,14 +194,57 @@ export class Session {
 
 // ---------- history ----------
 
-export function loadRuns(user) {
-  try {
-    const raw = localStorage.getItem(storageKey(user == null ? 1 : user));
-    const arr = JSON.parse(raw || '[]');
-    return Array.isArray(arr) ? arr.filter((r) => r && r.id) : [];
-  } catch {
-    return [];
+// Generic demo run so Insights/history never open empty for a fresh profile.
+// Synthesized on the fly (never persisted, never counts against the run cap)
+// and dropped from the list once the runner has 3+ real runs.
+function demoRun(user) {
+  const durS = 1500; // ~25 min
+  const timeline = [];
+  for (let t = 0; t <= durS; t += 5) {
+    const w = t / durS;
+    timeline.push({
+      t,
+      cadence: Math.round(168 + 4 * Math.sin(t / 47) + 2 * Math.sin(t / 13)),
+      bounce: Math.round((7 + 0.6 * Math.sin(t / 31)) * 10) / 10,
+      impact: Math.round((1.6 + 0.25 * Math.sin(t / 23)) * 100) / 100,
+      asym: Math.round((0.05 + 0.02 * Math.sin(t / 61)) * 1000) / 1000,
+      sway: null,
+      score: Math.round(84 + 4 * Math.sin(t / 53) - 3 * w * Math.sin(t / 17)),
+      balL: 51,
+    });
   }
+  return {
+    id: 'demo',
+    user,
+    mode: 'hand',
+    startedAt: Date.now() - 24 * 3600 * 1000, // yesterday
+    duration: durS,
+    km: 3.8,
+    timeline,
+    cues: [
+      { fault: 'cadence', text: 'Quicker feet. Shorten your stride.', t: 430 },
+      { fault: 'bounce', text: 'Too much bounce. Run softer, drive forward.', t: 1040 },
+    ],
+    avg: { cadence: 168, bounce: 7.0, impact: 1.6, asym: 0.05, sway: null },
+    score: 84,
+  };
+}
+
+export function loadRuns(user) {
+  const u = user == null ? 1 : user;
+  let runs = [];
+  try {
+    const raw = localStorage.getItem(storageKey(u));
+    const arr = JSON.parse(raw || '[]');
+    runs = Array.isArray(arr) ? arr.filter((r) => r && r.id) : [];
+  } catch {
+    runs = [];
+  }
+  // seed the sample run (oldest position) until the runner has 3+ real runs
+  try {
+    if (runs.filter((r) => r.id !== 'demo').length < 3) runs = [...runs, demoRun(u)];
+  } catch { /* the demo must never break real history */ }
+  return runs;
 }
 
 // ---------- Insights rendering ----------
@@ -429,8 +497,10 @@ export function renderInsights(containerEl, run, prevRun) {
   const tl = run.timeline || [];
   const avg = run.avg || {};
   const fault = dominantFault(run);
-  const meta = fault && FAULT_META[fault];
-  const clean = !fault;
+  // an unknown fault name (old stored run, foreign telemetry) must render the
+  // clean layout, never blank the screen on meta.* access
+  const meta = (fault && FAULT_META[fault]) || null;
+  const clean = !meta;
 
   const impactPts = series(run, 'impact');
   const cadencePts = series(run, 'cadence');
@@ -511,7 +581,7 @@ export function renderInsights(containerEl, run, prevRun) {
     </div>` : ''}
 
     <div class="si-card si-summary">
-      <div><div class="si-big">${run.km == null ? '–' : run.km.toFixed(2)}</div><div class="si-sub">km</div></div>
+      <div><div class="si-big">${typeof run.km === 'number' ? run.km.toFixed(2) : '–'}</div><div class="si-sub">km</div></div>
       <div><div class="si-big">${fmtDuration(dur)}</div><div class="si-sub">duration</div></div>
       <div><div class="si-big">${(run.cues || []).length}</div><div class="si-sub">cues</div></div>
       <div><div class="si-big" style="font-size:16px;padding-top:5px">${run.mode === 'ears' ? 'AirPods' : 'Phone'}</div><div class="si-sub">sensor</div></div>
@@ -534,6 +604,7 @@ export function renderInsights(containerEl, run, prevRun) {
 
   // history list
   const histEl = containerEl.querySelector('[data-history]');
+  if (!histEl) return;
   let runs = [];
   try { runs = loadRuns(run.user); } catch { /* storage unavailable */ }
   if (!runs.length && run.id) runs = [run];
@@ -544,11 +615,12 @@ export function renderInsights(containerEl, run, prevRun) {
   runs.forEach((r, i) => {
     const row = document.createElement('div');
     row.className = 'si-hist-row';
-    const d = new Date(r.startedAt || r.t0 || NaN);
-    const when = Number.isFinite(d.getTime())
-      ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' · ' +
-        d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-      : 'Earlier run';
+    const d = new Date(r.startedAt ?? r.t0 ?? NaN);
+    const when = r.id === 'demo' ? 'Sample run'
+      : Number.isFinite(d.getTime())
+        ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' · ' +
+          d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+        : 'Earlier run';
     row.innerHTML = `
       <div class="si-hist-main">
         <div class="si-hist-title">${when}${r.id === run.id ? ' · this run' : ''}</div>

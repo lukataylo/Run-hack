@@ -9,6 +9,7 @@ export const CONFIG = {
   // cue thresholds (the contract — do not rename/renumber)
   CADENCE_FLOOR: 153,          // Garmin red zone floor (spm)
   CADENCE_BASELINE_FRAC: 0.95, // cue when below 95% of own session baseline
+  CADENCE_HEALTHY: 170,        // bottom of the healthy target zone — never cue at/above this
   BOUNCE_MAX: 10.5,            // m/s² RMS ≈ Garmin orange vertical oscillation
   ASYM_MAX: 0.10,              // Robinson index
   SWAY_FALLBACK: 0.62,         // eigenratio fallback until per-runner calibration
@@ -41,12 +42,19 @@ const PRIORITY = ['cadence', 'bounce', 'sway', 'asymmetry'];
 
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
 
+function median(arr) {
+  const n = arr.length;
+  if (n === 0) return 0;
+  const a = arr.slice().sort((x, y) => x - y);
+  return n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2;
+}
+
 function trimmedMean(arr, frac = 0.1) {
   const n = arr.length;
   if (n === 0) return 0;
   if (n < 4) return arr.reduce((s, x) => s + x, 0) / n;
   const a = arr.slice().sort((x, y) => x - y);
-  const k = Math.floor(n * frac);
+  const k = Math.max(1, Math.floor(n * frac)); // always trim ≥1/side: one pothole is not a fault
   let s = 0;
   for (let i = k; i < n - k; i++) s += a[i];
   return s / (n - 2 * k);
@@ -78,7 +86,9 @@ export function verticalSeries(samples) {
 // Linear resample onto a uniform grid — autocorrelation needs even spacing.
 function resample(t, v, dtMs) {
   const dur = t[t.length - 1] - t[0];
-  const n = Math.max(2, Math.floor(dur / dtMs) + 1);
+  // guard: one bad timestamp must not allocate an unbounded array
+  if (!Number.isFinite(dur) || dur <= 0) return v.slice();
+  const n = Math.max(2, Math.min(2000, Math.floor(dur / dtMs) + 1));
   const out = new Array(n);
   let j = 0;
   for (let i = 0; i < n; i++) {
@@ -99,11 +109,15 @@ export function analyze(samples, mode = 'hand') {
   // moving gate: overall gravity-removed accel RMS
   let acc2 = 0;
   for (const s of samples) acc2 += s.ax * s.ax + s.ay * s.ay + s.az * s.az;
-  if (Math.sqrt(acc2 / n) < CONFIG.MOVING_RMS) return out;
+  const rmsAll = Math.sqrt(acc2 / n);
+  if (!Number.isFinite(rmsAll) || rmsAll < CONFIG.MOVING_RMS) return out; // NaN-permeable gate would fabricate metrics
   out.moving = true;
 
   const { v, up } = verticalSeries(samples);
   const t = samples.map((s) => s.t);
+  // undersampled windows alias into wrong cadences — discard the tick entirely
+  const spanS = (t[n - 1] - t[0]) / 1000;
+  if (!(spanS > 0) || (n - 1) / spanS < 15) { out.moving = false; return out; }
 
   const DT = 20; // ms — resample to 50 Hz
   const u = resample(t, v, DT);
@@ -122,11 +136,11 @@ export function analyze(samples, mode = 'hand') {
 
   // cadence: autocorrelation over the 130–210 spm lag band + parabolic interpolation
   const dtS = DT / 1000;
-  const minLag = Math.max(1, Math.floor(60 / CONFIG.CADENCE_MAX / dtS));
-  const maxLag = Math.min(un - 2, Math.ceil(60 / CONFIG.CADENCE_MIN / dtS));
+  const minLag = Math.max(1, Math.ceil(60 / CONFIG.CADENCE_MAX / dtS));   // ceil/floor: round INTO the
+  const maxLag = Math.min(un - 2, Math.floor(60 / CONFIG.CADENCE_MIN / dtS)); // 130–210 band, not past it
   let r0 = 0;
   for (const x of u) r0 += x * x;
-  if (r0 < 1e-9 || maxLag <= minLag) return out;
+  if (r0 < 1e-9 || maxLag <= minLag) { out.moving = false; return out; } // degenerate window: discard, don't score 0
   const r = new Array(maxLag + 2).fill(0);
   for (let L = minLag - 1; L <= maxLag + 1 && L < un - 1; L++) {
     let s = 0;
@@ -139,7 +153,7 @@ export function analyze(samples, mode = 'hand') {
   let delta = 0;
   const ym = r[best - 1], y0 = r[best], yp = r[best + 1];
   const den = ym - 2 * y0 + yp;
-  if (Math.abs(den) > 1e-12) delta = 0.5 * (ym - yp) / den;
+  if (best < maxLag && Math.abs(den) > 1e-12) delta = 0.5 * (ym - yp) / den; // r[best+1] may be unwritten at the edge
   if (delta > 0.5) delta = 0.5; else if (delta < -0.5) delta = -0.5;
   const period = (best + delta) * dtS;
   out.cadence = 60 / period;
@@ -152,7 +166,7 @@ export function analyze(samples, mode = 'hand') {
   for (let i = 1; i < un - 1; i++) {
     if (u[i] > thr && u[i] >= u[i - 1] && u[i] >= u[i + 1]) {
       if (i - lastPk <= gap) {
-        if (peaks.length && u[i] > u[peaks[peaks.length - 1]]) { peaks[peaks.length - 1] = i; lastPk = i; }
+        if (u[i] > u[peaks[peaks.length - 1]]) { peaks[peaks.length - 1] = i; lastPk = i; }
         continue;
       }
       peaks.push(i);
@@ -220,7 +234,7 @@ export function analyze(samples, mode = 'hand') {
 
 // Explainable form score: weighted clamped deductions past each threshold.
 // A judge can ask why any score is what it is.
-export function formScore(m, mode = 'hand') {
+function formScore(m, mode = 'hand') {
   const W = CONFIG.WEIGHTS;
   const dCad = clamp01((CONFIG.CADENCE_FLOOR - m.cadence) / CONFIG.CADENCE_SPREAD);
   const dBounce = clamp01((m.bounce - CONFIG.BOUNCE_MAX) / CONFIG.BOUNCE_SPREAD);
@@ -277,20 +291,28 @@ export class Coach {
       h.push(m[k]);
       if (h.length > CONFIG.TRIM_TICKS) h.shift();
     }
+    // rolling 5-minute window (300 ticks at 1 Hz): warm-up strides must not
+    // push the baseline up and nag a healthy runner for the rest of the run
     this.sessionCadence.push(m.cadence);
+    if (this.sessionCadence.length > 300) this.sessionCadence.shift();
     if (this.mode === 'ears') this.swayHist.push(m.sway);
 
     const sm = this.smoothed();
 
     // cadence threshold: 95% of own session baseline, floored at 153 (never an
-    // absolute 180 target — evidence says relative to your own cadence)
-    const base = trimmedMean(this.sessionCadence);
-    const cadThr = Math.max(CONFIG.CADENCE_FLOOR, CONFIG.CADENCE_BASELINE_FRAC * base);
+    // absolute 180 target — evidence says relative to your own cadence).
+    // MEDIAN of the window: robust to warm-up spikes and cadence outliers.
+    // Capped at CADENCE_HEALTHY: fast warm-up strides can hold the window
+    // median high for minutes after the runner settles — a runner cruising
+    // inside the healthy 170–180 zone must never be nagged to go quicker.
+    const base = median(this.sessionCadence);
+    const cadThr = Math.max(CONFIG.CADENCE_FLOOR,
+      Math.min(CONFIG.CADENCE_BASELINE_FRAC * base, CONFIG.CADENCE_HEALTHY));
 
     // sway threshold: per-runner mean + 2 SD after 60 moving seconds, capped at
     // the 0.62 fallback; before that, the fallback
     let swayThr = CONFIG.SWAY_FALLBACK;
-    if (this.movingS >= CONFIG.SWAY_CALIB_S && this.swayHist.length >= CONFIG.SWAY_CALIB_S) {
+    if (this.movingS >= CONFIG.SWAY_CALIB_S) {
       const mu = this.swayHist.reduce((s, x) => s + x, 0) / this.swayHist.length;
       const sd = Math.sqrt(this.swayHist.reduce((s, x) => s + (x - mu) * (x - mu), 0) / this.swayHist.length);
       swayThr = Math.min(CONFIG.SWAY_FALLBACK, mu + 2 * sd);

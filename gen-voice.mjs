@@ -20,6 +20,17 @@ const CUES = {
   bounce:    "Too much bounce. Run softer, drive forward.",
   asymmetry: "You're favouring one side. Even it out.",
   sway:      "Your head is rocking. Eyes forward, run tall.",
+  // Runway persona lines (persona.js) - static variants only; km/run-end lines
+  // are dynamic and always go through the bridge/TTS.
+  'persona-greet-1':    "Runway here. Pods in, and let's see what you've got.",
+  'persona-greet-2':    "Runway online. Whenever you're ready.",
+  'persona-greet-3':    "Runway here. Lace up — I'll do the watching.",
+  'persona-runstart-1': "Let's go. Find your rhythm — I'll handle the nitpicking.",
+  'persona-runstart-2': "Off we go. Relax your shoulders, I've got the rest.",
+  'persona-runstart-3': "Here we go. Settle in — I'll speak up if something slips.",
+  'persona-praise-1':   "That's smooth. Keep exactly this.",
+  'persona-praise-2':   "Textbook. Don't change a thing.",
+  'persona-praise-3':   "Quiet from me is a compliment. This is why.",
 };
 
 await mkdir('audio', { recursive: true });

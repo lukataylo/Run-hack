@@ -14,8 +14,8 @@ targets:
       - { path: ../index.html, buildPhase: resources }
       - { path: ../coach.js, buildPhase: resources }
       - { path: ../head.js, buildPhase: resources }
-      - { path: ../replay.js, buildPhase: resources, optional: true }
       - { path: ../voice.js, buildPhase: resources, optional: true }
+      - { path: ../persona.js, buildPhase: resources, optional: true }
       - { path: ../bot.js, buildPhase: resources, optional: true }
       - { path: ../bot-data.js, buildPhase: resources, optional: true }
       - { path: ../music.js, buildPhase: resources, optional: true }

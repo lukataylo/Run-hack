@@ -41,6 +41,9 @@ export function unlock() {
   if (unlocked) return;
   unlocked = true;
   FAULTS.forEach(preload);
+  // iOS Safari: the ring/silent switch mutes WebAudio/TTS unless the page opts
+  // into the 'playback' audio session category
+  try { navigator.audioSession.type = 'playback'; } catch { /* not iOS Safari */ }
   try {
     const a = new Audio(
       // 1-frame silent mp3, inline so unlock needs no network
@@ -66,18 +69,22 @@ export function say(text, fault) {
     try {
       clip.currentTime = 0;
       const p = clip.play();
-      if (p && p.catch) p.catch(() => speak(text)); // autoplay refusal -> fall through
+      // autoplay refusal -> same fallback order as no-clip: bridge, then TTS
+      if (p && p.catch) p.catch(() => bridgeOrSpeak(text));
       return;
     } catch (e) { /* fall through */ }
   }
 
-  // 2. native bridge (survives a locked screen; the shell speaks via AVSpeech)
+  bridgeOrSpeak(text);
+}
+
+function bridgeOrSpeak(text) {
+  // native bridge first (survives a locked screen; the shell speaks via
+  // AVSpeech), then speechSynthesis
   try {
     const h = window.webkit?.messageHandlers?.say;
     if (h) { h.postMessage(text); return; }
   } catch (e) { /* fall through */ }
-
-  // 3. speechSynthesis
   speak(text);
 }
 

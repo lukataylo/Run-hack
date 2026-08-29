@@ -5,6 +5,11 @@ import { RoomEnvironment } from './vendor/three.RoomEnvironment.js';
 
 export function mount(el) {
   if (!el) return;
+  // idempotence: renderInsights re-renders call mount repeatedly — a fresh
+  // WebGL context per call exhausts the browser's context pool and kills the
+  // home-screen pods
+  if (el.dataset.pods3dMounted) return;
+  el.dataset.pods3dMounted = '1';
   let renderer;
   try {
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -44,8 +49,12 @@ export function mount(el) {
       if (!renderer.domElement.isConnected) {
         clearInterval(iv);
         renderer.dispose();
+        delete el.dataset.pods3dMounted; // a future mount may rebuild
         return;
       }
+      // skip GPU work while invisible: offsetParent === null covers display:none
+      // ancestors (a hidden screen), document.hidden covers a backgrounded tab
+      if (el.offsetParent === null || document.hidden) return;
       t += 0.03;
       group.rotation.y = 0.45 * Math.sin(t * 0.5);
       group.rotation.x = 0.12 * Math.sin(t * 0.33) - 0.1;
@@ -54,11 +63,9 @@ export function mount(el) {
   };
 
   // primary: procured GLB (a human commits it; may not exist yet)
-  new Promise((res, rej) => {
-    import('./vendor/three.GLTFLoader.js').then(({ GLTFLoader }) => {
-      new GLTFLoader().load('assets/airpods/airpods-pro.glb', res, undefined, rej);
-    }).catch(rej);
-  }).then((gltf) => {
+  import('./vendor/three.GLTFLoader.js')
+    .then(({ GLTFLoader }) => new GLTFLoader().loadAsync('assets/airpods/airpods-pro.glb'))
+    .then((gltf) => {
     const m = gltf.scene;
     // STL-derived GLB carries only a flat PBR white; apply the house finish
     const white = new THREE.MeshPhysicalMaterial({
