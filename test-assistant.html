@@ -44,6 +44,8 @@
     <button id="m-start">Start</button>
     <button id="m-stop">Stop</button>
     <button id="m-cue">Fire cue (duck + sting)</button>
+    <button id="m-duck">duck(-8, 1.5)</button>
+    <span id="m-bpm" style="color:var(--dim);align-self:center;font-variant-numeric:tabular-nums">stopped</span>
   </div>
   <div id="sliders" style="margin-top:12px"></div>
 </div>
@@ -124,8 +126,18 @@ document.getElementById('m-start').onclick = async () => {
   log('music.start()');
 };
 document.getElementById('m-stop').onclick = () => { music.stop(); log('music.stop()'); };
+document.getElementById('m-duck').onclick = () => { music.duck(-8, 1.5); log('music.duck(-8, 1.5)'); };
 document.getElementById('m-cue').onclick = () => { music.onCue(); log('music.onCue()'); };
 setInterval(() => { if (music.running) music.update({ ...metrics }); }, 1000); // 1 Hz like the app loop
+
+// live BPM readout while the engine runs (also handy for console debugging)
+window.__bench = { music, bot, metrics };
+setInterval(() => {
+  const T = window.Tone;
+  document.getElementById('m-bpm').textContent = music.running && T
+    ? 'BPM ' + T.Transport.bpm.value.toFixed(1) + ' | ' + T.Transport.position
+    : 'stopped';
+}, 500);
 
 log('bench ready');
 </script>
