@@ -45,6 +45,10 @@ export class Session {
     this.cues = [];
     this.km = 0;
     this.stopped = false;
+    // route trace: accepted fixes kept as [tSec, lat, lon, altOrNull] so a run
+    // can be drawn afterwards. Without this the geometry is gone forever — the
+    // fixes were previously consumed for distance and discarded.
+    this.track = [];
     this._lastFix = null;
     this._watchId = null;
     this._startGPS();
@@ -71,6 +75,14 @@ export class Session {
               this.km += d / 1000;
             }
             this._lastFix = c;
+            // ~4 dp ≈ 11 m of precision is plenty for a drawn route and keeps
+            // an hour-long run's trace well under the localStorage budget
+            this.track.push([
+              Math.round((Date.now() - this.startedAt) / 1000),
+              Math.round(c.latitude * 1e5) / 1e5,
+              Math.round(c.longitude * 1e5) / 1e5,
+              typeof c.altitude === 'number' && isFinite(c.altitude) ? Math.round(c.altitude) : null,
+            ]);
           } catch { /* a bad fix must never touch the run */ }
         },
         () => { /* GPS denied/unavailable: distance stays 0, run continues */ },
@@ -177,6 +189,7 @@ export class Session {
       duration: Math.round((Date.now() - this.startedAt) / 1000),
       km: Math.round(this.km * 1000) / 1000,
       timeline: tl,
+      track: this.track,
       cues: this.cues,
       avg: {
         cadence: avgOf(tl, 'cadence'),
