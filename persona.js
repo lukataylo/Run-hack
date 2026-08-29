@@ -94,6 +94,23 @@ export const SASSY = {
   ],
 };
 
+// Coach-screen opening roasts — always playful, always at the human, PG-13,
+// effort-and-excuses targets only. Shown in the speech bubble on entry.
+export const ROAST = [
+  { text: "Oh look who remembered they have legs.", clip: 'roast-1' },
+  { text: "I've seen your last run. We have work to do.", clip: 'roast-2' },
+  { text: "Ah, my favourite project. And I do mean project.", clip: 'roast-3' },
+  { text: "You again. The couch filed a missing persons report.", clip: 'roast-4' },
+  { text: "Your cadence called. It wants ambition.", clip: 'roast-5' },
+  { text: "I coach champions. I also coach you. Balance.", clip: 'roast-6' },
+  { text: "Today's forecast: sweat, with a chance of excuses.", clip: 'roast-7' },
+  { text: "Blink twice if you stretched. Thought so.", clip: 'roast-8' },
+  { text: "Nice shoes. Let's see if they've ever met a hill.", clip: 'roast-9' },
+  { text: "Lower your expectations. Now we both start winning.", clip: 'roast-10' },
+];
+const roastDeck = {};
+export function pickRoast() { return drawDeck(roastDeck, 'r', ROAST); }
+
 let personality = 'supportive';
 export function setPersonality(p) { personality = p === 'sassy' ? 'sassy' : 'supportive'; }
 export function getPersonality() { return personality; }

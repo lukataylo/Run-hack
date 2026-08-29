@@ -49,6 +49,17 @@ const CUES = {
   'motivate-generic-4': "Forward is winning.",
   // sassy personality (opt-in) — CARROT-Weather-informed, PG-13, punches at effort never bodies
   'posture': "Head's dropping. Chin up, run tall.",
+  // coach-screen opening roasts
+  'roast-1': "Oh look who remembered they have legs.",
+  'roast-2': "I've seen your last run. We have work to do.",
+  'roast-3': "Ah, my favourite project. And I do mean project.",
+  'roast-4': "You again. The couch filed a missing persons report.",
+  'roast-5': "Your cadence called. It wants ambition.",
+  'roast-6': "I coach champions. I also coach you. Balance.",
+  'roast-7': "Today's forecast: sweat, with a chance of excuses.",
+  'roast-8': "Blink twice if you stretched. Thought so.",
+  'roast-9': "Nice shoes. Let's see if they've ever met a hill.",
+  'roast-10': "Lower your expectations. Now we both start winning.",
   'sassy-runstart-1': "Oh good, you showed up. I had a whole speech ready about quitters.",
   'sassy-runstart-2': "Let's go, legs. Your couch will still love you when you get back.",
   'sassy-runstart-3': "Starting the run. Lower your expectations accordingly.",

@@ -106,9 +106,16 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
 
 /* ---------- coach ---------- */
 /* full-screen living coach stage */
-#coach-stage{position:relative;flex:1;min-height:380px;margin:14px -18px -96px;overflow:hidden;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
+#coach-stage{position:relative;min-height:430px;margin:0 -18px;overflow:hidden;border-radius:0 0 26px 26px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;padding:18px 0 22px;
   background:radial-gradient(120% 100% at 50% 0%,#1c0d05 0%,#0b0b0e 55%,#09090b 100%)}
+#coach-bubble{position:relative;max-width:270px;min-height:44px;margin-bottom:14px;padding:12px 16px;
+  background:#f4f4f5;color:#101014;border-radius:16px;font-weight:700;font-size:15px;line-height:1.35;
+  box-shadow:0 6px 24px rgba(0,0,0,.45)}
+#coach-bubble i{position:absolute;left:50%;bottom:-8px;width:16px;height:16px;background:#f4f4f5;
+  transform:translateX(-50%) rotate(45deg);border-radius:3px}
+#coach-bubble-text{border-right:3px solid var(--accent);padding-right:2px;animation:blinkc 1s steps(1) infinite}
+@keyframes blinkc{50%{border-color:transparent}}
 .cs-blob{position:absolute;width:340px;height:340px;border-radius:50%;filter:blur(70px);opacity:.22;pointer-events:none}
 .cs-blob.a{background:#ff5b14;top:-90px;left:-70px;animation:csa 13s ease-in-out infinite alternate}
 .cs-blob.b{background:#ff8a3d;bottom:-120px;right:-90px;animation:csb 17s ease-in-out infinite alternate}
@@ -313,7 +320,15 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
 <!-- ================= COACH ================= -->
 <section class="screen" id="scr-coach">
   <div class="scr-head"><span class="title">Coach</span></div>
-  <div class="card" id="goal-card">
+  <!-- living coach on top: dynamic background, speech-bubble roasts, tap-reactive -->
+  <div id="coach-stage">
+    <div class="cs-blob a"></div><div class="cs-blob b"></div><div class="cs-blob c"></div>
+    <div id="coach-bubble"><span id="coach-bubble-text"></span><i></i></div>
+    <div class="bot-slot" id="coach-bot"><div class="bot-ph" style="width:56px;height:56px"></div></div>
+    <div id="coach-word">RUNWAY</div>
+    <div id="coach-tag">Tap me — I have more where that came from.</div>
+  </div>
+  <div class="card" id="goal-card" style="margin-top:14px">
     <div class="eyebrow orange">Goal run — optional</div>
     <div class="goal-sec">Distance</div>
     <div class="goal-chips" id="goal-chips">
@@ -334,13 +349,6 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
     <div id="goal-note">Optional — leave unset and the run behaves as normal. Applies to your next run only,
     then clears. GPS accuracy is ±10–30 m with ~1 fix a second, so goals under 400 m are demo-grade.</div>
     <button id="goal-clear" hidden>Clear goal</button>
-  </div>
-  <!-- full-screen living coach: dynamic background + big tap-reactive mascot -->
-  <div id="coach-stage">
-    <div class="cs-blob a"></div><div class="cs-blob b"></div><div class="cs-blob c"></div>
-    <div class="bot-slot" id="coach-bot"><div class="bot-ph" style="width:56px;height:56px"></div></div>
-    <div id="coach-word">RUNWAY</div>
-    <div id="coach-tag">Tap me. Silence on the run means your form is good.</div>
   </div>
 </section>
 
@@ -530,16 +538,37 @@ function mountBot(el) {
 }
 const liveBot = mountBot($('live-bot'));
 const coachBot = mountBot($('coach-bot'));
-// the full-screen coach reacts to touch: expression + a spoken line (in-gesture,
-// so audio is unlocked). Sassy personality answers in kind.
-const COACH_TAP_STATES = ['happy', 'celebrate', 'proud', 'suspicious', 'working'];
-let coachTapI = 0;
+// the living coach: speech-bubble roasts, typewriter delivery, tap for more.
+// Opens by making fun of the human straight away.
+const COACH_TAP_STATES = ['suspicious', 'happy', 'celebrate', 'proud', 'working'];
+let coachTapI = 0, bubbleTimer = null, bubbleRotate = null;
+function bubbleSay(line, speakIt) {
+  if (!line) return;
+  clearInterval(bubbleTimer);
+  const el = $('coach-bubble-text');
+  let i = 0;
+  el.textContent = '';
+  bubbleTimer = setInterval(() => { // typewriter — setInterval, never rAF
+    el.textContent = line.text.slice(0, ++i);
+    if (i >= line.text.length) clearInterval(bubbleTimer);
+  }, 26);
+  coachBot?.setState?.(COACH_TAP_STATES[coachTapI++ % COACH_TAP_STATES.length]);
+  if (speakIt) speak(line.text, line.clip);
+  setTimeout(() => { try { coachBot?.setState?.('idle'); } catch {} }, 3000);
+}
+function coachScreenAlive() {
+  // roast immediately on entry (spoken too — the shell's bridge doesn't need a
+  // gesture; plain web stays silent until the first tap), rotate while visible
+  bubbleSay(persona?.pickRoast?.(), true);
+  clearInterval(bubbleRotate);
+  bubbleRotate = setInterval(() => {
+    if (!$('scr-coach').classList.contains('on') || document.hidden) return;
+    bubbleSay(persona?.pickRoast?.(), false); // rotation is visual only
+  }, 9000);
+}
 $('coach-bot').onclick = () => {
   try { voice?.unlock?.(); } catch {}
-  coachBot?.setState?.(COACH_TAP_STATES[coachTapI++ % COACH_TAP_STATES.length]);
-  const line = persona?.pick?.(Math.random() < 0.5 ? 'greet' : 'praise');
-  if (line) speak(line.text, line.clip);
-  setTimeout(() => { try { coachBot?.setState?.('idle'); } catch {} }, 2600);
+  bubbleSay(persona?.pickRoast?.(), true);
 };
 const setBots = (s) => { try { liveBot?.setState(s); coachBot?.setState(s); } catch {} };
 
@@ -587,7 +616,10 @@ function show(name) {
   if (name === 'live') sizeCanvases();
   if (name === 'insights') paintInsights();
 }
-for (const b of document.querySelectorAll('#tabbar button')) b.onclick = () => show(b.dataset.s);
+for (const b of document.querySelectorAll('#tabbar button')) b.onclick = () => {
+  show(b.dataset.s);
+  if (b.dataset.s === 'coach') { try { voice?.unlock?.(); coachScreenAlive(); } catch {} }
+};
 $('btn-history').onclick = () => { show('history'); paintHistoryScreen(); };
 $('btn-history-back').onclick = () => show('home');
 
