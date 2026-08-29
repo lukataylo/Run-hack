@@ -86,7 +86,7 @@ export function mountBody(el, metrics) {
           img.onload = () => { el.replaceChildren(img); };
         });
         // 202 = generating (30-60 s); poll with setInterval-style timeouts
-        if (r.status === 202 && aiTries++ < 9) aiTimer = setTimeout(poll, 10000);
+        if (r.status === 202 && aiTries++ < 30) aiTimer = setTimeout(poll, 10000);
       }).catch(() => {}); // offline/404: SVG stays
     };
     poll();

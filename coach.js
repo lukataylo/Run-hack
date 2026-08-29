@@ -211,36 +211,43 @@ export function analyze(samples, mode = 'hand') {
     out.balance = leftShare;
   }
 
-  // sway (ears mode ONLY — from a hand, arm swing IS the lateral motion):
-  // frame from the data itself: up = gravity; fore = principal axis of the 2×2
-  // horizontal covariance; sway = sqrt(λ2/λ1) = cross-track fraction. No compass.
-  if (mode === 'ears') {
-    const e1 = lateralAxis(up);
-    const e2 = cross(up, e1);
-    let sxx = 0, sxy = 0, syy = 0, mx = 0, my = 0;
-    const hx = new Array(n), hy = new Array(n);
-    for (let i = 0; i < n; i++) {
-      const s = samples[i];
-      const du = s.ax * up[0] + s.ay * up[1] + s.az * up[2];
-      const rx = s.ax - du * up[0], ry = s.ay - du * up[1], rz = s.az - du * up[2];
-      hx[i] = rx * e1[0] + ry * e1[1] + rz * e1[2];
-      hy[i] = rx * e2[0] + ry * e2[1] + rz * e2[2];
-      mx += hx[i]; my += hy[i];
-    }
-    mx /= n; my /= n;
-    for (let i = 0; i < n; i++) {
-      const x = hx[i] - mx, y = hy[i] - my;
-      sxx += x * x; sxy += x * y; syy += y * y;
-    }
-    sxx /= n; sxy /= n; syy /= n;
-    const tr = sxx + syy, det = sxx * syy - sxy * sxy;
-    const disc = Math.sqrt(Math.max(0, tr * tr - 4 * det));
-    const l1 = (tr + disc) / 2, l2 = (tr - disc) / 2;
-    if (l1 > 1e-9) out.sway = Math.sqrt(Math.max(0, l2) / l1);
-  }
+  // sway (ears mode ONLY — from a hand, arm swing IS the lateral motion)
+  if (mode === 'ears') out.sway = swayOf(samples, up);
 
   out.score = formScore(out, mode);
   return out;
+}
+
+// Sway = sqrt(λ2/λ1) of the 2×2 horizontal-accel covariance: the cross-track
+// fraction of horizontal motion. Frame from the data itself (up = gravity,
+// fore = principal axis) — no compass. Exported UNGATED so the calibration
+// screen keeps measuring under motion the run-shaped gates would discard.
+export function swayOf(samples, up = null) {
+  const n = samples.length;
+  if (n < 16) return 0;
+  if (!up) up = verticalSeries(samples).up;
+  const e1 = lateralAxis(up);
+  const e2 = cross(up, e1);
+  let sxx = 0, sxy = 0, syy = 0, mx = 0, my = 0;
+  const hx = new Array(n), hy = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const s = samples[i];
+    const du = s.ax * up[0] + s.ay * up[1] + s.az * up[2];
+    const rx = s.ax - du * up[0], ry = s.ay - du * up[1], rz = s.az - du * up[2];
+    hx[i] = rx * e1[0] + ry * e1[1] + rz * e1[2];
+    hy[i] = rx * e2[0] + ry * e2[1] + rz * e2[2];
+    mx += hx[i]; my += hy[i];
+  }
+  mx /= n; my /= n;
+  for (let i = 0; i < n; i++) {
+    const x = hx[i] - mx, y = hy[i] - my;
+    sxx += x * x; sxy += x * y; syy += y * y;
+  }
+  sxx /= n; sxy /= n; syy /= n;
+  const tr = sxx + syy, det = sxx * syy - sxy * sxy;
+  const disc = Math.sqrt(Math.max(0, tr * tr - 4 * det));
+  const l1 = (tr + disc) / 2, l2 = (tr - disc) / 2;
+  return l1 > 1e-9 ? Math.sqrt(Math.max(0, l2) / l1) : 0;
 }
 
 // Explainable form score: weighted clamped deductions past each threshold.

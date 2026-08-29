@@ -47,6 +47,18 @@ async function generateBodyImage(sig) {
   await writeFile(join(IMG_DIR, `${sig}.png`), Buffer.from(d.data[0].b64_json, 'base64'));
 }
 
+// Pre-warm common signatures at boot — /tmp resets every deploy, and Home asks
+// for these immediately (the seeded demo run is all-cool). Sequential, lazy.
+if (process.env.OPENAI_API_KEY) {
+  setTimeout(async () => {
+    for (const sig of ['h0-t0-l0-r0-f0', 'h0-t1-l0-r0-f1', 'h1-t1-l1-r1-f1', 'h2-t1-l0-r1-f2']) {
+      try { await stat(join(IMG_DIR, `${sig}.png`)); } catch {
+        await generateBodyImage(sig).catch(() => {});
+      }
+    }
+  }, 3000);
+}
+
 async function handleBodyImage(req, res, url) {
   const sig = url.searchParams.get('sig') || '';
   if (!SIG_RE.test(sig) || !process.env.OPENAI_API_KEY) { res.writeHead(404); res.end(); return; }

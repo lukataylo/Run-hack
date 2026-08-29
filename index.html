@@ -393,7 +393,23 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
   </div>
 
   <div class="card" style="margin-top:12px">
-    <div class="eyebrow">Head tilt</div>
+    <div style="display:flex;align-items:center">
+      <div class="eyebrow" style="flex:1">Head in 3D</div>
+      <div class="seg" id="cal-viewseg" style="padding:3px;gap:3px">
+        <button data-v="3d" class="on" style="padding:7px 12px;font-size:11px">3D</button>
+        <button data-v="both" style="padding:7px 12px;font-size:11px">Both</button>
+        <button data-v="gauges" style="padding:7px 12px;font-size:11px">Gauges</button>
+      </div>
+    </div>
+    <div id="cal-3d" style="height:230px;margin-top:10px;border-radius:12px;overflow:hidden;
+      background:radial-gradient(120% 90% at 50% 10%,#221008 0%,#131316 60%)"></div>
+    <button id="cal-setlevel" style="width:100%;margin-top:10px;padding:12px 0;border-radius:12px;
+      background:var(--grad);color:#fff;font-weight:800;font-size:14px">Set level — look straight ahead, then tap</button>
+    <div class="note">Full AirPods orientation — pitch, roll and yaw, live. Set level zeroes it to your natural gaze.</div>
+  </div>
+
+  <div class="card" id="cal-gauges-card" style="margin-top:12px;display:none">
+    <div class="eyebrow">Gauges</div>
     <div style="display:flex;align-items:center;gap:18px;margin-top:10px">
       <svg id="cal-level" width="140" height="140" viewBox="0 0 140 140" style="flex:none">
         <circle cx="70" cy="70" r="60" fill="none" stroke="#26262b" stroke-width="1.6"/>
@@ -414,17 +430,20 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
   </div>
 
   <div class="card" style="margin-top:12px">
-    <div class="eyebrow">Impact &amp; jump</div>
+    <div class="eyebrow">Steps, impact &amp; jump</div>
     <div style="display:flex;align-items:center;gap:16px;margin-top:10px">
       <div id="cal-vbar-wrap"><div id="cal-vbar"></div></div>
-      <div style="flex:1;min-width:0">
-        <div class="eyebrow">Peak</div>
-        <div class="num" id="cal-peak" style="font-size:28px">-- g</div>
-        <div id="cal-jump-flash" class="sub"></div>
+      <div style="flex:1;min-width:0;display:flex;gap:18px">
+        <div><div class="eyebrow">Steps</div>
+          <div class="num" id="cal-steps" style="font-size:28px">0</div>
+          <div class="sub"><span id="cal-steprate">--</span> spm</div></div>
+        <div><div class="eyebrow">Peak</div>
+          <div class="num" id="cal-peak" style="font-size:28px">-- g</div>
+          <div id="cal-jump-flash" class="sub"></div></div>
       </div>
     </div>
     <div id="cal-jumps" class="sub" style="margin-top:8px"></div>
-    <div class="note">Hop once. We should catch the landing.</div>
+    <div class="note">March in place — every footfall should count. Hop once and we should catch the landing.</div>
   </div>
 
   <div class="card set-row" style="margin-top:12px">
@@ -445,7 +464,7 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
 </div>
 
 <script type="module">
-import { analyze, Coach, verticalSeries, CONFIG, GoalTracker } from './coach.js';
+import { analyze, Coach, verticalSeries, swayOf, CONFIG, GoalTracker } from './coach.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -1016,9 +1035,32 @@ function paintGoalRemaining(elapsedS) {
 // Reads only the existing head.js buffer — zero new sensor plumbing. Renders
 // placeholders when nothing streams. Ears-only: hand-mode devicemotion is only
 // attached during a run, so it is not fed here (noted on-screen).
-$('row-calib').onclick = () => show('calib');
+let cal3d = null;
+$('row-calib').onclick = () => {
+  show('calib');
+  // 3D head mounts on first visit (screen must be visible for sizing)
+  if (!cal3d) {
+    import('./calib3d.js').then((m) => {
+      cal3d = m.mountCalib3D($('cal-3d'), () => {
+        const w = head ? head.getWindow(400) : [];
+        return w[w.length - 1] || null;
+      });
+    }).catch(() => {});
+  }
+};
 $('btn-calib-back').onclick = () => show('profile');
+$('cal-setlevel').onclick = () => { try { cal3d?.setLevel?.(); calRef = null; } catch {} };
+for (const b of document.querySelectorAll('#cal-viewseg button')) {
+  b.onclick = () => {
+    document.querySelectorAll('#cal-viewseg button').forEach((x) => x.classList.toggle('on', x === b));
+    const v = b.dataset.v;
+    $('cal-3d').style.display = v === 'gauges' ? 'none' : '';
+    $('cal-setlevel').style.display = v === 'gauges' ? 'none' : '';
+    $('cal-gauges-card').style.display = v === '3d' ? 'none' : '';
+  };
+}
 let calPeakG = 0, calJumps = [], calLastJumpSampleT = -Infinity, calFlashUntil = 0;
+let calSteps = 0, calLastStepT = -Infinity, calRef = null;
 function calibTick() {
   if (!$('scr-calib').classList.contains('on')) return;
   try {
@@ -1042,11 +1084,19 @@ function calibTick() {
       return;
     }
 
-    // TILT: pitch/roll from the newest gravity vector. The axis convention for
-    // an in-ear sensor is an UNCALIBRATED approximation (calibration knob) —
-    // the test here is "the dot follows the head instantly", not absolute degrees.
-    const pitch = Math.atan2(-newest.gx, Math.hypot(newest.gy, newest.gz)) * 180 / Math.PI;
-    const roll = Math.atan2(newest.gy, newest.gz) * 180 / Math.PI;
+    // TILT gauges: prefer the 3D view's zeroed quaternion angles (true attitude
+    // when the shell streams q*); fall back to raw gravity pitch/roll. "Set
+    // level" zeroes both paths (calRef holds the gravity-path reference).
+    let pitch, roll;
+    const a3 = cal3d?.angles?.();
+    if (a3 && typeof newest.qw === 'number') {
+      pitch = a3.pitch; roll = a3.roll;
+    } else {
+      pitch = Math.atan2(-newest.gx, Math.hypot(newest.gy, newest.gz)) * 180 / Math.PI;
+      roll = Math.atan2(newest.gy, newest.gz) * 180 / Math.PI;
+      if (calRef === null) calRef = { pitch, roll }; // set-level zero for the gravity path
+      pitch -= calRef.pitch; roll -= calRef.roll;
+    }
     $('cal-pitch').textContent = `${pitch.toFixed(0)}°`;
     $('cal-roll').textContent = `${roll.toFixed(0)}°`;
     const px = (d) => Math.max(-45, Math.min(45, d)) / 45 * 52; // ±45° spans the target
@@ -1088,10 +1138,33 @@ function calibTick() {
     }
     if (calFlashUntil && Date.now() > calFlashUntil) { $('cal-jump-flash').textContent = ''; calFlashUntil = 0; }
 
-    // SWAY sanity: the real analyzer on the live 6 s window (needs enough
-    // motion to pass the moving gate — a vigorous head-shake does)
-    const sm = analyze(head.getWindow(6000), 'ears');
-    $('cal-sway').textContent = sm.moving ? sm.sway.toFixed(2) : '--';
+    // STEPS: incremental footfall counting on the 6 s window — mean-removed
+    // vertical accel, peaks above max(1.2, 0.8×RMS) m/s², 250 ms min gap
+    // (slower than the run band on purpose: marching in place must count).
+    const w6 = head.getWindow(6000);
+    if (w6.length >= 16) {
+      const { v: v6 } = verticalSeries(w6);
+      let rms6 = 0;
+      for (const x of v6) rms6 += x * x;
+      rms6 = Math.sqrt(rms6 / v6.length);
+      const thr = Math.max(1.2, 0.8 * rms6);
+      const stepTs = [];
+      for (let i = 1; i < v6.length - 1; i++) {
+        if (v6[i] > thr && v6[i] >= v6[i - 1] && v6[i] >= v6[i + 1] &&
+            (!stepTs.length ? true : w6[i].t - stepTs[stepTs.length - 1] > 250)) {
+          stepTs.push(w6[i].t);
+        }
+      }
+      for (const st of stepTs) if (st > calLastStepT) { calSteps++; calLastStepT = st; }
+      $('cal-steps').textContent = String(calSteps);
+      const spanS6 = (w6[w6.length - 1].t - w6[0].t) / 1000;
+      $('cal-steprate').textContent = stepTs.length >= 3 && spanS6 > 2
+        ? String(Math.round(stepTs.length / spanS6 * 60)) : '--';
+
+      // SWAY sanity: UNGATED swayOf — the run-shaped gates in analyze() discard
+      // violent head-shakes, which froze this number mid-test
+      $('cal-sway').textContent = swayOf(w6).toFixed(2);
+    }
   } catch { /* the calibration screen must never take the app down */ }
 }
 setInterval(calibTick, 100); // ~10 Hz; setInterval, never rAF (throttled webviews)

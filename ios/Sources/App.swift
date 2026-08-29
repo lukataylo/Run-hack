@@ -159,10 +159,14 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
             case .headphoneRight: loc = 2
             default: loc = 0
             }
+            // attitude quaternion = full 3D head orientation (pitch/roll/yaw)
+            // — the calibration screen renders a live 3D head from it
+            let q = dm.attitude.quaternion
             let js = String(
-                format: "window.__head&&window.__head({t:%.1f,ax:%.4f,ay:%.4f,az:%.4f,gx:%.4f,gy:%.4f,gz:%.4f,loc:%d})",
+                format: "window.__head&&window.__head({t:%.1f,ax:%.4f,ay:%.4f,az:%.4f,gx:%.4f,gy:%.4f,gz:%.4f,loc:%d,qw:%.4f,qx:%.4f,qy:%.4f,qz:%.4f})",
                 t, a.x * G, a.y * G, a.z * G,
-                (a.x + g.x) * G, (a.y + g.y) * G, (a.z + g.z) * G, loc)
+                (a.x + g.x) * G, (a.y + g.y) * G, (a.z + g.z) * G, loc,
+                q.w, q.x, q.y, q.z)
             self.web?.evaluateJavaScript(js, completionHandler: nil)
         }
     }
