@@ -115,6 +115,7 @@ export class Session {
       impact: num(m.impact),
       asym,
       sway: num(m.sway),
+      estKmh: num(m.estKmh), // accel-only speed estimate (GPS-independent)
       score: num(m.score),
       // prefer the analyzer's real balance (left share 0..1) when present;
       // fall back to the asymmetry-split heuristic (uncalibrated L/R labels).

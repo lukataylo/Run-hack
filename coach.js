@@ -15,6 +15,11 @@ export const CONFIG = {
   SWAY_FALLBACK: 0.62,         // eigenratio fallback until per-runner calibration
   SWAY_CALIB_S: 60,            // moving seconds before per-runner sway threshold
   MOVING_RMS: 3,               // m/s² — below this: not running, no metrics, no cues
+  // posture guard (opt-in; needs a Set-level calibration) — calibration knobs
+  TILT_DEV_DEG: 12,            // degrees off the calibrated neutral before it's a fault
+  // accel-only speed estimate: v ≈ SPEED_K · stepHz · sqrt(vertical oscillation).
+  // SPEED_K self-calibrates against GPS when it is live — calibration knob
+  SPEED_K: 4.3,
   // etiquette (ms)
   MUTE_MS: 20000,              // start-of-run mute
   PERSIST_MS: 12000,           // fault must persist this long on the smoothed view
@@ -46,10 +51,12 @@ export const CUES = {
   bounce: 'Too much bounce. Run softer, drive forward.',
   asymmetry: "You're favouring one side. Even it out.",
   sway: 'Your head is rocking. Eyes forward, run tall.',
+  // posture guard (opt-in mode): deviation from the CALIBRATED head level
+  posture: "Head's dropping. Chin up, run tall.",
 };
 
 // priority order for cue selection (asymmetry ALWAYS lowest — RCT: doesn't predict injury)
-const PRIORITY = ['cadence', 'bounce', 'sway', 'asymmetry'];
+const PRIORITY = ['cadence', 'bounce', 'sway', 'posture', 'asymmetry'];
 
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
 
@@ -168,6 +175,12 @@ export function analyze(samples, mode = 'hand') {
   if (delta > 0.5) delta = 0.5; else if (delta < -0.5) delta = -0.5;
   const period = (best + delta) * dtS;
   out.cadence = 60 / period;
+
+  // vertical oscillation (meters, peak-to-peak): treat the vertical series as a
+  // sinusoid at step frequency; displacement = accel_amplitude / ω². Feeds the
+  // accel-only speed estimate.
+  const omega = 2 * Math.PI / period;
+  out.vo = (2 * Math.SQRT2 * rms) / (omega * omega);
 
   // footfalls: local maxima of v above 0.8×RMS, min gap 0.6× step period
   const thr = 0.8 * rms;
@@ -309,6 +322,13 @@ export class Coach {
       h.push(m[k]);
       if (h.length > CONFIG.TRIM_TICKS) h.shift();
     }
+    // posture guard: tiltDev (deg off the calibrated neutral) is supplied by
+    // the app only when the mode is on AND a Set-level calibration exists
+    if (typeof m.tiltDev === 'number' && isFinite(m.tiltDev)) {
+      this.hist.tiltDev = this.hist.tiltDev || [];
+      this.hist.tiltDev.push(m.tiltDev);
+      if (this.hist.tiltDev.length > CONFIG.TRIM_TICKS) this.hist.tiltDev.shift();
+    }
     // rolling 5-minute window (300 ticks at 1 Hz): warm-up strides must not
     // push the baseline up and nag a healthy runner for the rest of the run
     this.sessionCadence.push(m.cadence);
@@ -340,6 +360,8 @@ export class Coach {
       cadence: sm.cadence < cadThr,
       bounce: sm.bounce > CONFIG.BOUNCE_MAX,
       sway: this.mode === 'ears' && sm.sway > swayThr,
+      posture: this.mode === 'ears' && this.hist.tiltDev?.length >= 5 &&
+        trimmedMean(this.hist.tiltDev) > CONFIG.TILT_DEV_DEG,
       asymmetry: sm.asym > CONFIG.ASYM_MAX,
     };
 

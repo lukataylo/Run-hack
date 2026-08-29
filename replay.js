@@ -359,5 +359,29 @@ if (existsSync(FIXTURES)) {
   console.log('SKIP  fixtures/ not present yet (Track C)');
 }
 
+// ---- posture guard + vertical oscillation ----
+{
+  const run170 = genRun({ cadence: 170, seconds: 20 });
+  const m = analyze(win(run170, 18), 'ears');
+  check('analyze reports vertical oscillation (vo) in a plausible band',
+    m.vo > 0.01 && m.vo < 0.25);
+
+  const c = new Coach('ears');
+  let cue = null;
+  for (let t = 0; t <= 60; t++) {
+    const got = c.update({ ...m, moving: true, tiltDev: 25 }, t * 1000);
+    if (got) { cue = got; break; }
+  }
+  check('posture guard cues on sustained tilt deviation', cue?.fault === 'posture');
+
+  const c2 = new Coach('ears');
+  let cue2 = null;
+  for (let t = 0; t <= 60; t++) {
+    const got = c2.update({ ...m, moving: true, tiltDev: 3 }, t * 1000);
+    if (got) { cue2 = got; break; }
+  }
+  check('small tilt deviation never cues posture', cue2?.fault !== 'posture');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

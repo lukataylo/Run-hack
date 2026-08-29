@@ -254,6 +254,7 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
       <div class="eyebrow">Distance</div>
       <div style="display:flex;align-items:baseline;gap:4px;margin-top:6px">
         <span id="dist-val" class="num big">0.00</span><span style="color:var(--dim);font-weight:700">km</span>
+        <div class="sub" id="pace-est"></div>
       </div>
       <div class="sub" id="pace-note">--:-- /km</div>
     </div>
@@ -367,6 +368,10 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
   <div class="card set-row">
     <div style="flex:1"><div class="lbl">Motivation mode</div><div class="note">A short boost roughly every ten seconds while you run</div></div>
     <button class="toggle" id="tgl-motivate"></button>
+  </div>
+  <div class="card set-row">
+    <div style="flex:1"><div class="lbl">Posture guard</div><div class="note" id="posture-note">Interrupts when your head tilts off your calibrated level (ears mode)</div></div>
+    <button class="toggle" id="tgl-posture"></button>
   </div>
   <div class="card" style="margin-top:12px">
     <div class="lbl">Coach personality</div>
@@ -508,6 +513,14 @@ const botMod = await import('./bot.js').catch(() => null);
 const musicMod = await import('./music.js').catch(() => null);
 const sessionMod = await import('./session.js').catch(() => null);
 const persona = await import('./persona.js').catch(() => null);
+// warm every known clip so first utterances use ElevenLabs, never the device voice
+try {
+  const keys = [];
+  for (const table of [persona?.LINES, persona?.MOTIVATE, persona?.SASSY]) {
+    for (const arr of Object.values(table || {})) for (const l of arr) if (l.clip) keys.push(l.clip);
+  }
+  voice?.warm?.(keys);
+} catch {}
 import('./pods3d.js').then((m) => m.mount?.($('pods-slot'))).catch(() => {});
 
 /* ---------- mascots ---------- */
@@ -534,7 +547,12 @@ const setBots = (s) => { try { liveBot?.setState(s); coachBot?.setState(s); } ca
 const user = '1'; // single-runner app (profiles removed)
 let mode = localStorage.getItem('mode') || 'hand';
 let voiceOn = true, musicOn = false; // voiceOn deliberately unpersisted
-let motivateOn = localStorage.getItem('motivate') === '1'; // persisted, default off
+let motivateOn = localStorage.getItem('motivate') === '1';
+let postureOn = localStorage.getItem('posture') === '1';
+let levelRef = null;
+try { levelRef = JSON.parse(localStorage.getItem('levelRef') || 'null'); } catch {}
+let speedK = Number(localStorage.getItem('speedK')) || CONFIG.SPEED_K;
+let spdFit = { t: 0, km: 0 }; // persisted, default off
 let running = false, coach = null, session = null, music = null;
 let runT0 = 0, wakeLock = null;
 let cueLog = [], impacts = [], lastMetrics = null, lastRun = null;
@@ -666,6 +684,19 @@ function toggleMotivate() {
   try { localStorage.setItem('motivate', motivateOn ? '1' : '0'); } catch {}
   paintMotivate();
 }
+
+/* ---------- posture guard toggle ---------- */
+$('tgl-posture').classList.toggle('on', postureOn);
+$('tgl-posture').onclick = () => {
+  try { levelRef = JSON.parse(localStorage.getItem('levelRef') || 'null'); } catch {}
+  if (!levelRef) {
+    $('posture-note').textContent = 'Save a head level first: Calibration → Set level.';
+    return;
+  }
+  postureOn = !postureOn;
+  try { localStorage.setItem('posture', postureOn ? '1' : '0'); } catch {}
+  $('tgl-posture').classList.toggle('on', postureOn);
+};
 $('tgl-motivate').onclick = toggleMotivate;
 $('btn-motivate').onclick = toggleMotivate;
 paintMotivate();
@@ -1167,7 +1198,28 @@ $('row-calib').onclick = () => {
   }
 };
 $('btn-calib-back').onclick = () => show('profile');
-$('cal-setlevel').onclick = () => { try { cal3d?.setLevel?.(); calRef = null; } catch {} };
+// raw gravity-based pitch/roll of the newest head sample (device-frame degrees)
+function rawTilt() {
+  const w = head ? head.getWindow(400) : [];
+  const s = w[w.length - 1];
+  if (!s) return null;
+  return {
+    pitch: Math.atan2(s.gx, Math.hypot(s.gy, s.gz)) * 180 / Math.PI,
+    roll: Math.atan2(s.gy, s.gz) * 180 / Math.PI,
+  };
+}
+$('cal-setlevel').onclick = () => {
+  try {
+    cal3d?.setLevel?.();
+    calRef = null;
+    // SAVE the head-tilt calibration — the posture guard compares against this
+    const t = rawTilt();
+    if (t) {
+      localStorage.setItem('levelRef', JSON.stringify(t));
+      $('cal-axes-note').textContent = `Level saved (pitch ${t.pitch.toFixed(0)}°, roll ${t.roll.toFixed(0)}°) — Posture guard can use it now.`;
+    }
+  } catch {}
+};
 $('cal-resetlevel').onclick = () => { try { cal3d?.resetLevel?.(); calRef = { pitch: 0, roll: 0 }; } catch {} };
 $('cal-axes').onclick = () => {
   try { const i = cal3d?.cycleAxes?.(); if (i != null) $('cal-axes').textContent = `Axes ${i + 1}/8`; } catch {}
@@ -1371,6 +1423,37 @@ setInterval(() => {
       } catch {}
     }
     if (music && m.moving) { try { music.update(m); } catch {} }
+
+    // posture guard: deviation from the SAVED head-tilt calibration → the
+    // Coach treats it as a 5th fault, full etiquette applies
+    if (postureOn && mode === 'ears' && levelRef && m.moving) {
+      try {
+        const t = rawTilt();
+        if (t) m.tiltDev = Math.hypot(t.pitch - levelRef.pitch, t.roll - levelRef.roll);
+      } catch {}
+    }
+
+    // accel-only speed estimate: v ≈ K · stepHz · sqrt(vertical oscillation);
+    // K self-calibrates against GPS whenever distance is live
+    if (m.moving && m.cadence > 0 && m.vo > 0) {
+      try {
+        const est = speedK * (m.cadence / 60) * Math.sqrt(m.vo);
+        m.estKmh = Math.round(est * 3.6 * 10) / 10;
+        const now = Date.now();
+        if (kmFreshness() && session?.km != null) {
+          if (spdFit.t && now - spdFit.t >= 12000 && session.km > spdFit.km) {
+            const actual = (session.km - spdFit.km) * 1000 / ((now - spdFit.t) / 1000);
+            const kObs = actual / ((m.cadence / 60) * Math.sqrt(m.vo));
+            if (kObs > 1 && kObs < 12) {
+              speedK = speedK * 0.8 + kObs * 0.2; // EMA fit
+              try { localStorage.setItem('speedK', String(speedK)); } catch {}
+            }
+            spdFit = { t: now, km: session.km };
+          } else if (!spdFit.t) spdFit = { t: now, km: session.km };
+        }
+        $('pace-est').textContent = `est ${m.estKmh} km/h`;
+      } catch {}
+    }
 
     const cue = coach.update(m, Date.now());
     if (cue) onCue(cue);

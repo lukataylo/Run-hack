@@ -48,6 +48,7 @@ const CUES = {
   'motivate-generic-3': "Quietly getting it done — I see it.",
   'motivate-generic-4': "Forward is winning.",
   // sassy personality (opt-in) — CARROT-Weather-informed, PG-13, punches at effort never bodies
+  'posture': "Head's dropping. Chin up, run tall.",
   'sassy-runstart-1': "Oh good, you showed up. I had a whole speech ready about quitters.",
   'sassy-runstart-2': "Let's go, legs. Your couch will still love you when you get back.",
   'sassy-runstart-3': "Starting the run. Lower your expectations accordingly.",

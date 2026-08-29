@@ -9,7 +9,13 @@ let voice = null;       // chosen speechSynthesis voice
 let currentClip = null; // last Audio element say() started (busy while playing)
 let bridgeUntil = 0;    // native bridge has no completion callback — assume busy until this wall-clock time
 
-const FAULTS = ['cadence', 'bounce', 'asymmetry', 'sway'];
+const FAULTS = ['cadence', 'bounce', 'asymmetry', 'sway', 'posture'];
+
+// Warm a list of clip keys (persona/motivation/sassy) so the FIRST play of any
+// line uses its ElevenLabs mp3 instead of falling back to the device voice.
+export function warm(keys) {
+  try { for (const k of keys || []) preload(k); } catch { /* best-effort */ }
+}
 
 function preload(fault) {
   if (tried[fault]) return;
@@ -78,12 +84,13 @@ export function say(text, fault) {
     } catch (e) { /* fall through */ }
   }
 
-  // 2. dynamic line: server-side ElevenLabs render (cached there), so km
-  // counts and goal summaries get the real Runway voice when online. Tight
-  // timeout — a dead spot must never delay the line past usefulness.
-  if (!fault && unlocked && navigator.onLine !== false) {
+  // 2. ElevenLabs via the server for ANY line without a ready clip (dynamic
+  // lines always; clip lines whose preload hasn't landed yet) — the device
+  // voice is the last resort, not the first-utterance default. Tight timeout —
+  // a dead spot must never delay the line past usefulness.
+  if (unlocked && navigator.onLine !== false) {
     bridgeUntil = Date.now() + 2500; // hold isBusy() while we fetch
-    fetch(`/tts?text=${encodeURIComponent(text.slice(0, 200))}`, { signal: AbortSignal.timeout(2000) })
+    fetch(`/tts?text=${encodeURIComponent(text.slice(0, 200))}`, { signal: AbortSignal.timeout(3500) })
       .then((r) => (r.ok ? r.blob() : Promise.reject()))
       .then((b) => {
         const a = new Audio(URL.createObjectURL(b));
