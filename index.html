@@ -478,6 +478,15 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
   from the native app feeds it. Hand-mode motion is not plumbed here.</div>
 </section>
 
+<!-- ================= HISTORY ================= -->
+<section class="screen" id="scr-history">
+  <div class="scr-head">
+    <button id="btn-history-back"><svg class="ic" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <span class="title">Activity History</span>
+  </div>
+  <div id="history-screen-list"></div>
+</section>
+
 <!-- ================= TAB BAR ================= -->
 <nav id="tabbar">
   <button data-s="home" class="on"><svg class="ic" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7"/><path d="M6 10v9h12v-9"/></svg>Home</button>
@@ -551,7 +560,7 @@ function sampleWindow(ms) {
 }
 
 /* ---------- screens ---------- */
-const SCREENS = ['home', 'live', 'insights', 'coach', 'profile', 'calib'];
+const SCREENS = ['home', 'live', 'insights', 'coach', 'profile', 'calib', 'history'];
 function show(name) {
   for (const s of SCREENS) $('scr-' + s).classList.toggle('on', s === name);
   for (const b of document.querySelectorAll('#tabbar button')) b.classList.toggle('on', b.dataset.s === name);
@@ -561,7 +570,52 @@ function show(name) {
   if (name === 'insights') paintInsights();
 }
 for (const b of document.querySelectorAll('#tabbar button')) b.onclick = () => show(b.dataset.s);
-$('btn-history').onclick = () => show('insights');
+$('btn-history').onclick = () => { show('history'); paintHistoryScreen(); };
+$('btn-history-back').onclick = () => show('home');
+
+// dedicated history screen: every run with its effort + AirPods telemetry
+function paintHistoryScreen() {
+  const el = $('history-screen-list');
+  if (!el) return;
+  el.innerHTML = '';
+  const runs = (sessionMod?.loadRuns?.(user)) || [];
+  if (!runs.length) { el.innerHTML = '<div class="sub" style="text-align:center;padding:30px 0">No runs yet.</div>'; return; }
+  const f1 = (v, d = 1) => (typeof v === 'number' && isFinite(v) ? v.toFixed(d) : '–');
+  for (const r of runs) {
+    const d = new Date(r.startedAt ?? r.t0 ?? NaN);
+    const when = r.id === 'demo' ? 'Sample run'
+      : Number.isFinite(d.getTime())
+        ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' · ' +
+          d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+        : 'Earlier run';
+    const a = r.avg || {};
+    const dur = r.duration ? `${Math.floor(r.duration / 60)}:${String(r.duration % 60).padStart(2, '0')}` : '–';
+    const ears = r.mode === 'ears';
+    const row = document.createElement('div');
+    row.className = 'card';
+    row.style.cssText = 'margin-top:10px;cursor:pointer';
+    row.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="flex:1;font-weight:700">${when}</div>
+        <div class="num" style="font-size:20px;color:${(r.score ?? 0) >= 85 ? 'var(--good)' : 'var(--accent2)'}">${r.score ?? '–'}</div>
+      </div>
+      <div class="sub" style="margin-top:4px">${typeof r.km === 'number' ? r.km.toFixed(2) : '–'} km · ${dur} · ${(r.cues || []).length} cues · ${ears ? 'AirPods' : 'Phone'}</div>
+      <div class="sub" style="margin-top:6px;display:flex;gap:14px;flex-wrap:wrap">
+        <span>EFFORT — cadence <b class="num">${f1(a.cadence, 0)}</b> spm</span>
+        <span>bounce <b class="num">${f1(a.bounce)}</b></span>
+        <span>impact <b class="num">${f1(a.impact)}</b> g</span>
+        ${ears ? `<span style="color:var(--accent2)">HEAD — sway <b class="num">${f1(a.sway, 2)}</b></span>` : ''}
+      </div>`;
+    row.onclick = () => {
+      show('insights');
+      try {
+        const all = runs.filter((x) => x.id !== r.id);
+        sessionMod?.renderInsights?.($('insights-body'), r, all[0] || null);
+      } catch {}
+    };
+    el.appendChild(row);
+  }
+}
 $('btn-ins-back').onclick = () => show(running ? 'live' : 'home');
 
 /* ---------- home widgets ---------- */
