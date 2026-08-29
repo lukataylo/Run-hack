@@ -18,6 +18,7 @@ const MIME = {
   '.glb': 'model/gltf-binary',
   '.jsonl': 'application/x-ndjson',
   '.ico': 'image/x-icon',
+  '.webmanifest': 'application/manifest+json',
 };
 
 // Track C's telemetry handlers (session-server.js) — optional until it lands.
@@ -57,6 +58,63 @@ if (process.env.OPENAI_API_KEY) {
       }
     }
   }, 3000);
+}
+
+// ---- /sync/<code>: bridge the native app's storage to the web app ---------
+// A WKWebView's localStorage is a different silo from Safari's, so runs
+// recorded in the installed app cannot be seen on the website without this.
+// One JSON blob per pairing code. Ephemeral by design, like telemetry.
+const SYNC_DIR = () => join(TELEMETRY_DIR_LOCAL, 'sync');
+const CODE_RE = /^[A-Z0-9]{4,8}$/;
+async function handleSync(req, res, url) {
+  const code = decodeURIComponent(url.pathname.slice('/sync/'.length)).toUpperCase();
+  if (!CODE_RE.test(code)) { res.writeHead(400); res.end('{"error":"bad code"}'); return; }
+  const file = join(SYNC_DIR(), `${code}.json`);
+  if (req.method === 'GET') {
+    try {
+      const body = await readFile(file);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(body);
+    } catch {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end('{"runs":[]}');
+    }
+    return;
+  }
+  if (req.method === 'POST') {
+    const chunks = [];
+    let bytes = 0;
+    for await (const c of req) {
+      bytes += c.length;
+      if (bytes > 4 * 1024 * 1024) { res.writeHead(413); res.end('{"error":"too big"}'); return; }
+      chunks.push(c);
+    }
+    let incoming = [];
+    try { incoming = JSON.parse(Buffer.concat(chunks).toString('utf8')).runs || []; }
+    catch { res.writeHead(400); res.end('{"error":"bad json"}'); return; }
+    if (!Array.isArray(incoming)) { res.writeHead(400); res.end('{"error":"bad shape"}'); return; }
+    // merge server-side too, so two phones pushing in any order converge
+    let existing = [];
+    try { existing = JSON.parse(await readFile(file, 'utf8')).runs || []; } catch { /* first push */ }
+    const byId = new Map();
+    for (const r of [...existing, ...incoming]) {
+      if (!r || typeof r !== 'object' || !r.id || r.id === 'demo') continue;
+      const prev = byId.get(r.id);
+      if (!prev || (r.timeline?.length || 0) > (prev.timeline?.length || 0)) byId.set(r.id, r);
+    }
+    const runs = [...byId.values()]
+      .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))
+      .slice(0, 20);
+    try {
+      await mkdir(SYNC_DIR(), { recursive: true });
+      await writeFile(file, JSON.stringify({ runs, at: Date.now() }));
+    } catch { res.writeHead(500); res.end('{"error":"write failed"}'); return; }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, count: runs.length }));
+    return;
+  }
+  res.writeHead(405);
+  res.end();
 }
 
 // ---- device registry: which phone is on which build -----------------------
@@ -174,11 +232,10 @@ const server = createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
-    // device check-in (POST, so it runs before the GET/HEAD gate below)
-    if (req.method === 'POST' && new URL(req.url, 'http://x').pathname === '/hello') {
-      await handleHello(req, res);
-      return;
-    }
+    // POST routes must run before the GET/HEAD gate below
+    const p0 = new URL(req.url, 'http://x').pathname;
+    if (req.method === 'POST' && p0 === '/hello') { await handleHello(req, res); return; }
+    if (p0.startsWith('/sync/')) { await handleSync(req, res, new URL(req.url, 'http://x')); return; }
 
     try {
       if (handleTelemetry && await handleTelemetry(req, res)) return;
