@@ -7,6 +7,10 @@ day. AirPods and a phone are the sensors; a voice in your ears is the product. T
 document is the complete specification: architecture, algorithms, exact thresholds,
 UI, native shell, adaptive music, deployment and verification. Follow it in order.
 
+**The build runs as THREE parallel agent tracks** — see "Three parallel tracks"
+below. Each agent reads this whole document but only writes the files its track
+owns.
+
 Ground rules: plain JS and stdlib over frameworks; fewest files possible; every
 commit deployable; verify each stage in a real browser (with simulated sensors)
 before moving on; commit early — first-commit evidence matters at hackathons. When
@@ -63,6 +67,67 @@ dies when a pod leaves an ear.
 | `replay.js` | The entire test suite: `npm run check`, no framework, <1s |
 | `gen-voice.mjs` | One-off build script: renders cue strings to `audio/*.mp3` via ElevenLabs |
 | `ios/` | `project.yml` (XcodeGen) + one Swift file + Info.plist |
+
+## Three parallel tracks (one agent each)
+
+Three agents build simultaneously. File ownership is exclusive — an agent never
+edits another track's files. The only shared file is `index.html`; Track A owns it
+and merges the other tracks' screens/wiring, which B and C deliver as self-contained
+snippets (a `<section>` + a module import) so integration is paste-sized.
+
+### Track A — Core app (the runnable product)
+
+Owns: `coach.js`, `replay.js` (analysis + cue-policy tests), `index.html`,
+`head.js`, `server.js` (static serving half), `ios/`, `pods3d.js` + `vendor/three*`,
+`package.json`, deployment.
+
+Builds: signal processing, cue policy engine, Home + Live-run + Profile screens,
+the 1 Hz app loop, sensor plumbing (DeviceMotionEvent + `window.__head`), iOS
+shell, Railway deploy. Track A commits first (`coach.js` + `replay.js` green is
+the eligibility timestamp) and owns the deployed URL from hour one.
+
+### Track B — Assistant (the voice in your ears)
+
+Owns: `voice.js`, `gen-voice.mjs`, `audio/`, `bot.js`, `bot-data.js`, `music.js`
++ `vendor/tone*`, `COACHING.md`, the Coach screen snippet.
+
+Builds: ElevenLabs clip generation + playback fallback chain, audio unlock,
+mascot with spring-morph expressions, adaptive music engine, cue-etiquette
+documentation. Everything Track B ships is callable without the rest of the app:
+`say(text, fault)`, `bot.setState(s)`, `music.start()/music.update(metrics)` —
+each testable from a bare HTML page before integration.
+
+### Track C — Telemetry & analysis (the memory and the numbers)
+
+Owns: `session.js`, `server.js` (telemetry endpoints half), `fixtures/`, the
+Insights/Run-Analysis screen snippet, run-history storage.
+
+Builds: GPS + haversine distance, per-second timeline, sendBeacon telemetry,
+JSONL endpoints, per-runner localStorage history, charts (impact area, cadence
+bars, head stability), deltas vs last run, fixture recorder/exporter, fixture
+replay hooks in `replay.js` (delivered to Track A as a function, not an edit).
+
+`server.js` is the one two-owner file: Track A writes the static-file half and
+the request router; Track C delivers the telemetry handlers as one function
+`handleTelemetry(req, res) → bool` that A's router calls first. That keeps the
+file single-writer at merge time.
+
+### Contracts between tracks (freeze these before anyone codes)
+
+- Sample: `{t, ax, ay, az, gx, gy, gz}` (ms, m/s²) — everywhere, both sensors.
+- `coach.analyze(samples, mode)` → `{cadence, bounce, impact, asym, sway, score, moving}`.
+- `coach.Coach#update(metrics, tMs)` → `null | {fault, text}` (fault ∈ cadence|bounce|asymmetry|sway).
+- `voice.say(text, fault)`, `voice.unlock()` — Track B; Track A calls them.
+- `bot.setState(state)` — states as listed in Mascot section.
+- `music.start()`, `music.update(metrics)`, `music.onCue()` — no-ops until toggled on.
+- `session.Session`: `start(mode, user)`, `tick(metrics)` (1 Hz), `logCue(cue)`,
+  `stop()` → saved run object; telemetry POST shape as in Sessions & telemetry.
+- Cue strings and CONFIG thresholds: exactly as specified in this document —
+  they are the contract, no track renames or renumbers them.
+
+Merge order: A deploys skeleton first; B and C integrate behind feature checks
+(`if (window.music)` style), so a half-merged page still runs. Every track's
+commits keep `npm run check` green.
 
 ## The signal processing (`coach.js`)
 
@@ -324,16 +389,24 @@ full loop: start → watch dial/score/balance → wait for the cue → stop → 
 analysis screen, then curl the production telemetry endpoint and confirm the
 snapshots arrived. Screenshot every screen before shipping.
 
-## Order of work
+## Order of work (per track — A/B/C run in parallel)
 
-1. `coach.js` + `replay.js` green → commit (this is the eligibility timestamp).
-2. `index.html` MVP + `server.js` → deploy → verify live on a phone.
+Track A: 1. `coach.js` + `replay.js` green → commit (the eligibility timestamp).
+2. `index.html` MVP + `server.js` static half → deploy → verify live on a phone.
 3. iOS shell → device install. Freeze it; all iteration is now web-only.
-4. Polish UI, mascot, 3D, ElevenLabs, telemetry, users — each its own deployable
-   commit.
-4b. Adaptive music: drums+bass against a fake cadence slider first, then wire the
-   real metrics, then the cue duck. Keep it behind a toggle.
-5. Record real fixtures on the track; tune CONFIG from them; lock with asserts.
+4. Merge B and C snippets as they land; 3D pods; polish — each its own
+deployable commit.
+
+Track B: 1. `voice.js` + `gen-voice.mjs`, mp3s committed, tested from a bare
+page. 2. Mascot. 3. Adaptive music: drums+bass against a fake cadence slider
+first, then real metrics, then the cue duck. Keep it behind a toggle. 4. COACHING.md.
+
+Track C: 1. `handleTelemetry` + curl-verified endpoints. 2. `session.js` (GPS,
+timeline, beacon, history). 3. Insights screen + charts + deltas. 4. Fixture
+recorder; replay hooks handed to A.
+
+All tracks then: record real fixtures on the track; tune CONFIG from them; lock
+with asserts.
 
 ## Register of honest limitations (put these in the README)
 
