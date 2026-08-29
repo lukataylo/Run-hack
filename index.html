@@ -243,6 +243,11 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
     <span id="live-title"><div class="t">Outdoor Run</div><div id="timer" class="num">00:00:00</div><div id="goal-remaining" class="num" hidden></div></span>
     <span id="gps-ind"><svg class="ic" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M4 18v-4M9 18v-8M14 18V7M19 18V4"/></svg>GPS</span>
   </div>
+  <!-- live telemetry indicator: green only while the SERVER accepted a snapshot
+       within the last 15 s, so a dead stream is visible instead of assumed -->
+  <div id="tele-ind" class="sub" style="display:flex;align-items:center;gap:7px;margin:-4px 0 8px">
+    <span class="dot off" id="tele-dot"></span><span id="tele-text">Offline</span>
+  </div>
 
   <div id="dial-wrap">
     <svg viewBox="0 0 200 200" id="dial-svg">
@@ -378,7 +383,7 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
     <div class="seg mini" id="mode-seg"><button data-m="hand">Phone</button><button data-m="ears">AirPods</button></div>
   </div>
   <div class="card set-row">
-    <div style="flex:1"><div class="lbl">AirPods stream</div><div class="note" id="stream-note">Not streaming</div></div>
+    <div style="flex:1"><div class="lbl" id="stream-lbl">Sensor stream</div><div class="note" id="stream-note">Not streaming</div></div>
     <span class="dot off" id="stream-dot"></span>
   </div>
   <div class="eyebrow" style="margin-top:18px">Coaching</div>
@@ -394,7 +399,9 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
     <div style="flex:1"><div class="lbl">Motivation mode</div><div class="note">A short boost roughly every ten seconds while you run</div></div>
     <button class="toggle" id="tgl-motivate"></button>
   </div>
-  <div class="card set-row">
+  <!-- ears-mode only: it compares HEAD tilt to a calibrated neutral, which is
+       meaningless when the sensor is a phone in your hand. Hidden in phone mode. -->
+  <div class="card set-row" id="posture-row">
     <div style="flex:1"><div class="lbl">Posture guard</div><div class="note" id="posture-note">Interrupts when your head tilts off your calibrated level (ears mode)</div></div>
     <button class="toggle" id="tgl-posture"></button>
   </div>
@@ -407,7 +414,7 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
     </div>
   </div>
   <div class="card set-row" id="row-calib" style="cursor:pointer">
-    <div style="flex:1"><div class="lbl">Calibration</div><div class="note">Sanity-check the AirPods sensor chain</div></div>
+    <div style="flex:1"><div class="lbl">Calibration</div><div class="note" id="calib-row-note">Sanity-check the phone sensor chain</div></div>
     <svg class="ic" viewBox="0 0 24 24" style="color:var(--dim)"><path d="m9 6 6 6-6 6"/></svg>
   </div>
   <div class="eyebrow" style="margin-top:18px">Data</div>
@@ -452,17 +459,20 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
     <div style="display:flex;align-items:center;gap:14px;margin-top:10px">
       <span class="dot off" id="cal-dot"></span>
       <div style="flex:1;min-width:0">
-        <div id="cal-status" style="font-weight:700">Waiting for AirPods stream</div>
+        <div id="cal-status" style="font-weight:700">Waiting for the sensor</div>
         <div class="sub"><span id="cal-rate">—</span> Hz · <span id="cal-loc-note">—</span></div>
       </div>
       <div id="cal-buds" class="num"><span id="cal-l">L</span><span id="cal-r">R</span></div>
     </div>
-    <div class="note" style="margin-top:10px">Pop one bud out to watch the stream switch. Automatic Ear Detection must be off.</div>
+    <div class="note" id="cal-conn-note" style="margin-top:10px">Hold your phone as you would on a run.</div>
+    <!-- iOS only hands out motion inside a user gesture; this button is that gesture -->
+    <button id="cal-allow" hidden style="margin-top:10px;width:100%;padding:12px 0;border-radius:12px;
+      background:var(--grad);color:#fff;font-weight:800;font-size:14px">Motion access needed — tap to allow</button>
   </div>
 
   <div class="card" style="margin-top:12px">
     <div style="display:flex;align-items:center">
-      <div class="eyebrow" style="flex:1">Head in 3D</div>
+      <div class="eyebrow" style="flex:1" id="cal-3d-title">Phone orientation</div>
       <div class="seg" id="cal-viewseg" style="padding:3px;gap:3px">
         <button data-v="3d" class="on" style="padding:7px 12px;font-size:11px">3D</button>
         <button data-v="both" style="padding:7px 12px;font-size:11px">Both</button>
@@ -473,14 +483,14 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
       background:radial-gradient(120% 90% at 50% 10%,#221008 0%,#131316 60%)"></div>
     <div style="display:flex;gap:8px;margin-top:10px">
       <button id="cal-setlevel" style="flex:2;padding:12px 0;border-radius:12px;
-        background:var(--grad);color:#fff;font-weight:800;font-size:14px">Set level — look straight ahead, then tap</button>
+        background:var(--grad);color:#fff;font-weight:800;font-size:14px">Set level — hold your carry position, then tap</button>
       <button id="cal-resetlevel" style="flex:1;padding:12px 0;border-radius:12px;
         background:var(--card2);color:var(--dim);font-weight:700;font-size:13px">Reset</button>
       <button id="cal-axes" style="flex:1;padding:12px 0;border-radius:12px;
         background:var(--card2);color:var(--dim);font-weight:700;font-size:13px">Axes 2/8</button>
     </div>
     <div class="note" id="cal-axes-note" style="margin-top:6px">If turns or tilts render on the wrong axis, tap Axes until the head copies you — it sticks.</div>
-    <div class="note">Full AirPods orientation — pitch, roll and yaw, live. Set level zeroes it to your natural gaze.</div>
+    <div class="note" id="cal-3d-note">Tilt and turn your phone — the model should follow instantly. Set level zeroes the display to your carry position.</div>
   </div>
 
   <div class="card" id="cal-gauges-card" style="margin-top:12px;display:none">
@@ -501,7 +511,7 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
         <div class="eyebrow" style="margin-top:10px">Roll</div><div class="num" id="cal-roll" style="font-size:26px">--°</div>
       </div>
     </div>
-    <div class="note">Nod, tilt, look around — the dot should follow instantly.</div>
+    <div class="note" id="cal-gauges-note">Tilt and turn the phone — the dot should follow instantly.</div>
   </div>
 
   <div class="card" style="margin-top:12px">
@@ -518,15 +528,17 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
       </div>
     </div>
     <div id="cal-jumps" class="sub" style="margin-top:8px"></div>
-    <div class="note">March in place — every footfall should count. Hop once and we should catch the landing.</div>
+    <div class="note" id="cal-steps-note">March on the spot with the phone in hand — every footfall should count. Hop once and we should catch the landing.</div>
   </div>
 
-  <div class="card set-row" style="margin-top:12px">
+  <!-- sway is an EARS-mode metric only: from a hand, arm swing IS the lateral
+       motion, so the number would be meaningless. Hidden in phone mode. -->
+  <div class="card set-row" id="cal-sway-row" style="margin-top:12px">
     <div style="flex:1"><div class="lbl">Sway</div><div class="note">Shake your head side to side and watch this rise.</div></div>
     <span class="num" id="cal-sway" style="font-size:24px">--</span>
   </div>
-  <div class="note" style="margin-top:10px;color:var(--dim);font-size:11px">Ears-only screen: the AirPods stream
-  from the native app feeds it. Hand-mode motion is not plumbed here.</div>
+  <div class="note" id="cal-foot-note" style="margin-top:10px;color:var(--dim);font-size:11px">Follows your sensor mode —
+  switch it on the Profile screen.</div>
 </section>
 
 <!-- ================= HISTORY ================= -->
@@ -554,6 +566,7 @@ const $ = (id) => document.getElementById(id);
 
 /* ---------- optional modules: a missing/broken module never takes the app down ---------- */
 const head = await import('./head.js').catch(() => null);
+const phone = await import('./phone.js').catch(() => null);
 const voice = await import('./voice.js').catch(() => null);
 const botMod = await import('./bot.js').catch(() => null);
 const musicMod = await import('./music.js').catch(() => null);
@@ -635,7 +648,10 @@ try {
   let devId = localStorage.getItem('devId');
   if (!devId) { devId = 'd' + Math.random().toString(36).slice(2, 10); localStorage.setItem('devId', devId); }
   const build = document.querySelector('meta[name="build"]')?.content || '';
-  fetch('/hello', { method: 'POST', body: JSON.stringify({ device: devId, build, ua: navigator.userAgent }) })
+  // apiBase(): '' on http(s), the deployed origin when the native shell fell
+  // back to the bundled page over a custom scheme (where a relative URL dies)
+  const base = sessionMod?.apiBase?.() ?? '';
+  fetch(`${base}/hello`, { method: 'POST', body: JSON.stringify({ device: devId, build, ua: navigator.userAgent }) })
     .then((r) => r.json())
     .then((j) => { if (j?.slot) localStorage.setItem('telemetrySlot', String(j.slot)); })
     .catch(() => {});
@@ -700,21 +716,45 @@ let recording = false, recBuf = [], lastRecording = null;
 let goalDraft = { km: null, s: null };
 let goalTracker = null, activeGoal = null, pendingGoalEvent = null, goalDone = false;
 
-/* ---------- hand-mode sample buffer ---------- */
-let handBuf = [];
-function onMotion(e) {
-  const a = e.acceleration, g = e.accelerationIncludingGravity;
-  if (!a || !g || g.x == null) return;
-  const s = { t: performance.now(), ax: a.x || 0, ay: a.y || 0, az: a.z || 0, gx: g.x, gy: g.y, gz: g.z };
-  handBuf.push(s);
-  if (recording && mode === 'hand') recBuf.push(s);
-}
+/* ---------- sample source: ONE buffer module per mode ---------- */
+// phone.js and head.js expose the same shape, so every reader (run loop,
+// calibration, fixture recorder, 3D view) goes through this one function and
+// there is no second devicemotion handler anywhere in the app.
+const sensor = () => (mode === 'ears' ? head : phone);
 function sampleWindow(ms) {
-  if (mode === 'ears' && head) return head.getWindow(ms);
-  const cut = performance.now() - ms;
-  if (handBuf.length > 4000) handBuf = handBuf.filter((s) => s.t >= cut);
-  return handBuf.filter((s) => s.t >= cut);
+  const src = sensor();
+  return src ? src.getWindow(ms) : [];
 }
+function sensorStreaming() {
+  try { return !!sensor()?.isStreaming?.(); } catch { return false; }
+}
+// live sample rate (Hz). phone.js reports its own; head.js predates the export,
+// so derive it from the buffer span the same way.
+function sensorRate() {
+  try {
+    const src = sensor();
+    if (src?.rate) return src.rate();
+    const w = sampleWindow(2000);
+    if (w.length < 2) return 0;
+    const span = (w[w.length - 1].t - w[0].t) / 1000;
+    return span > 0.2 ? Math.round((w.length - 1) / span) : 0;
+  } catch { return 0; }
+}
+// permission state for the phone buffer: null = not asked, false = refused
+let motionAllowed = null;
+async function startPhone() {
+  if (!phone) return false;
+  try {
+    const ok = await phone.start();
+    motionAllowed = ok;
+    return ok;
+  } catch { motionAllowed = false; return false; }
+}
+// Boot attempt: on desktop/Android this attaches immediately; on iOS the
+// permission call outside a gesture simply fails (no prompt is burned) and the
+// in-gesture retries below — Start Run, the Calibration row, the allow button —
+// are what actually grant it.
+startPhone();
 
 /* ---------- screens ---------- */
 const SCREENS = ['home', 'live', 'insights', 'coach', 'profile', 'calib', 'history'];
@@ -783,17 +823,56 @@ $('btn-ins-back').onclick = () => show(running ? 'live' : 'home');
 // fixed at '1' (existing runs saved under runs:1 keep working)
 
 function paintModeSeg() {
+  const ears = mode === 'ears';
   for (const b of document.querySelectorAll('#mode-seg button')) b.classList.toggle('on', b.dataset.m === mode);
   // honest on the web: no browser exposes headphone motion, so ears mode is
   // only real inside the iOS shell
-  $('mode-note').textContent = mode === 'ears'
+  $('mode-note').textContent = ears
     ? (inNativeShell ? 'AirPods in ears — head stability on'
       : 'AirPods head tracking needs the iOS app — the web uses phone-in-hand')
     : 'Phone in hand';
-  $('conn-mode').textContent = mode === 'ears' ? 'Ears mode' : 'Hand mode';
+  $('conn-mode').textContent = ears ? 'Ears mode' : 'Hand mode';
+  $('stream-lbl').textContent = ears ? 'AirPods stream' : 'Phone motion';
+  $('calib-row-note').textContent = ears
+    ? 'Sanity-check the AirPods sensor chain' : 'Sanity-check the phone sensor chain';
+  // posture guard reads HEAD tilt against a calibrated neutral — meaningless
+  // from a hand, so the row only exists in ears mode
+  $('posture-row').hidden = !ears;
+  paintCalibCopy();
+}
+function paintCalibCopy() {
+  const ears = mode === 'ears';
+  $('cal-3d-title').textContent = ears ? 'Head orientation' : 'Phone orientation';
+  $('cal-conn-note').textContent = ears
+    ? 'Pop one bud out to watch the stream switch. Automatic Ear Detection must be off.'
+    : 'Hold your phone as you would on a run.';
+  $('cal-3d-note').textContent = ears
+    ? 'Full AirPods orientation — pitch, roll and yaw, live. Set level zeroes it to your natural gaze.'
+    : 'Tilt and turn your phone — the model should follow instantly. Set level saves your carry orientation; it only zeroes this display.';
+  $('cal-setlevel').textContent = ears
+    ? 'Set level — look straight ahead, then tap'
+    : 'Set level — hold your carry position, then tap';
+  $('cal-gauges-note').textContent = ears
+    ? 'Nod, tilt, look around — the dot should follow instantly.'
+    : 'Tilt and turn the phone — the dot should follow instantly.';
+  $('cal-steps-note').textContent = ears
+    ? 'March in place — every footfall should count. Hop once and we should catch the landing.'
+    : 'March on the spot with the phone in hand — every footfall should count. Hop once and we should catch the landing.';
+  // sway: ears only. From a hand, arm swing IS the lateral motion (spec §7).
+  $('cal-sway-row').hidden = !ears;
+  $('cal-buds').hidden = !ears;
+  $('cal-foot-note').textContent = ears
+    ? 'Ears mode: the AirPods stream from the native app feeds this screen.'
+    : 'Phone mode: this screen reads the phone motion buffer. Switch sensor mode on the Profile screen.';
 }
 for (const b of document.querySelectorAll('#mode-seg button'))
-  b.onclick = () => { mode = b.dataset.m; localStorage.setItem('mode', mode); paintModeSeg(); };
+  b.onclick = () => {
+    mode = b.dataset.m;
+    try { localStorage.setItem('mode', mode); } catch {}
+    paintModeSeg();
+    // phone mode needs the buffer running; the click IS the gesture iOS wants
+    if (mode === 'hand') startPhone();
+  };
 paintModeSeg();
 
 $('tgl-voice').onclick = () => { voiceOn = !voiceOn; $('tgl-voice').classList.toggle('on', voiceOn); $('btn-voice').classList.toggle('on', voiceOn); };
@@ -1098,13 +1177,8 @@ document.addEventListener('visibilitychange', () => {
 $('btn-start').onclick = async () => {
   if (running) return; // double-tap guard — MUST precede any await
   // everything below must stay inside the tap gesture: sensor permission + audio unlock
-  let motionDenied = false;
-  try {
-    if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission) {
-      const p = await DeviceMotionEvent.requestPermission();
-      motionDenied = p !== 'granted';
-    }
-  } catch { motionDenied = true; }
+  // phone.js owns the permission call and the listener — one sample path
+  const motionDenied = !(await startPhone());
   // never block the run on the permission call — in a WKWebView it can fail
   // even though devicemotion events flow (and alert() is dead there anyway);
   // if events really are absent, the moving gate just shows "listening"
@@ -1119,14 +1193,15 @@ $('btn-start').onclick = async () => {
   }
 
   try { session?.stop(); } catch {} // defensive: never leak a live GPS watch/beacon
-  handBuf = []; impacts = []; cueLog = []; recBuf = []; recording = false;
-  try { head?.reset?.(); } catch {} // stale pre-run ears samples must not seed the first windows
+  impacts = []; cueLog = []; recBuf = []; recording = false; lastRecT = -Infinity;
+  // stale pre-run samples must not seed the first windows (either sensor)
+  try { head?.reset?.(); } catch {}
+  try { phone?.reset?.(); } catch {}
   lastKmSpoken = 0; praiseHighSince = 0;
   $('btn-rec').classList.remove('on');
   coach = new Coach(mode);
   session = null;
   if (sessionMod?.Session) { try { session = new sessionMod.Session(mode, user); } catch { session = null; } }
-  window.addEventListener('devicemotion', onMotion);
   runT0 = Date.now();
   // first motivation line lands 15–19 s in; km trackers reset per run
   motivateNextAt = runT0 + 15000 + Math.random() * 4000;
@@ -1157,7 +1232,6 @@ $('btn-stop').onclick = () => {
   running = false;
   goalTracker = null; activeGoal = null; pendingGoalEvent = null; goalDone = false;
   try { $('goal-remaining').hidden = true; } catch {}
-  window.removeEventListener('devicemotion', onMotion);
   try { wakeLock?.release(); } catch {}
   if (music) { try { music.stop(); } catch {} }
   if (recBuf.length) { lastRecording = recBuf; $('rec-note').textContent = `${recBuf.length} samples buffered — ready to export`; }
@@ -1174,12 +1248,14 @@ $('btn-stop').onclick = () => {
   paintFormMap(); // the Home form map now reflects this run
 };
 
-// ears-mode recording: poll the head buffer (no event stream to hook)
-let lastRecT = 0;
+// fixture recording: ONE path for both modes — drain the active sensor buffer
+// from the 1 Hz loop, deduped by sample t (there is no event stream to hook now
+// that phone.js owns the devicemotion handler)
+let lastRecT = -Infinity;
 $('btn-rec').onclick = () => {
   recording = !recording;
   $('btn-rec').classList.toggle('on', recording);
-  if (recording && mode === 'ears') lastRecT = 0;
+  if (recording) lastRecT = -Infinity;
 };
 
 $('btn-export').onclick = () => {
@@ -1329,27 +1405,36 @@ function paintGoalRemaining(elapsedS) {
   }
 }
 
-/* ---------- calibration screen: AirPods sensor-chain sanity checks ---------- */
-// Reads only the existing head.js buffer — zero new sensor plumbing. Renders
-// placeholders when nothing streams. Ears-only: hand-mode devicemotion is only
-// attached during a run, so it is not fed here (noted on-screen).
+/* ---------- calibration screen: sensor-chain sanity checks, both modes ---------- */
+// Reads the ACTIVE sensor buffer (phone.js in hand mode, head.js in ears mode)
+// through sampleWindow — zero new sensor plumbing. Renders placeholders when
+// nothing streams.
 let cal3d = null;
-$('row-calib').onclick = () => {
+function openCalib() {
   show('calib');
-  // 3D head mounts on first visit (screen must be visible for sizing)
+  paintCalibCopy();
+  // phone mode needs the buffer live BEFORE the screen is useful, and this tap
+  // is the user gesture iOS demands for the motion prompt
+  if (mode === 'hand') startPhone().then(() => { try { $('cal-allow').hidden = motionAllowed !== false; } catch {} });
+  // 3D view mounts on first visit (screen must be visible for sizing)
   if (!cal3d) {
     import('./calib3d.js').then((m) => {
       cal3d = m.mountCalib3D($('cal-3d'), () => {
-        const w = head ? head.getWindow(400) : [];
+        const w = sampleWindow(400);
         return w[w.length - 1] || null;
       });
     }).catch(() => {});
   }
+}
+$('row-calib').onclick = openCalib;
+$('cal-allow').onclick = async () => {
+  const ok = await startPhone();
+  $('cal-allow').hidden = ok;
 };
 $('btn-calib-back').onclick = () => show('profile');
-// raw gravity-based pitch/roll of the newest head sample (device-frame degrees)
+// raw gravity-based pitch/roll of the newest sample (device-frame degrees)
 function rawTilt() {
-  const w = head ? head.getWindow(400) : [];
+  const w = sampleWindow(400);
   const s = w[w.length - 1];
   if (!s) return null;
   return {
@@ -1361,11 +1446,15 @@ $('cal-setlevel').onclick = () => {
   try {
     cal3d?.setLevel?.();
     calRef = null;
-    // SAVE the head-tilt calibration — the posture guard compares against this
+    // SAVE the neutral tilt. In ears mode this is the head level the posture
+    // guard compares against; in phone mode it is only the display zero — a
+    // phone in your hand has no meaningful posture neutral.
     const t = rawTilt();
     if (t) {
       localStorage.setItem('levelRef', JSON.stringify(t));
-      $('cal-axes-note').textContent = `Level saved (pitch ${t.pitch.toFixed(0)}°, roll ${t.roll.toFixed(0)}°) — Posture guard can use it now.`;
+      $('cal-axes-note').textContent = mode === 'ears'
+        ? `Level saved (pitch ${t.pitch.toFixed(0)}°, roll ${t.roll.toFixed(0)}°) — Posture guard can use it now.`
+        : `Carry orientation saved (pitch ${t.pitch.toFixed(0)}°, roll ${t.roll.toFixed(0)}°) — this only zeroes the display.`;
     }
   } catch {}
 };
@@ -1387,17 +1476,27 @@ let calSteps = 0, calLastStepT = -Infinity, calRef = null;
 function calibTick() {
   if (!$('scr-calib').classList.contains('on')) return;
   try {
-    const streaming = !!head?.isStreaming?.();
-    const w2 = head ? head.getWindow(2000) : [];
+    const ears = mode === 'ears';
+    const streaming = sensorStreaming();
+    const w2 = sampleWindow(2000);
     $('cal-dot').classList.toggle('off', !streaming);
-    $('cal-status').textContent = streaming ? 'AirPods streaming' : 'Waiting for AirPods stream';
-    $('cal-rate').textContent = streaming && w2.length ? String(Math.round(w2.length / 2)) : '—';
-    // which bud: loc from the newest sample (0 unknown, 1 left, 2 right)
+    $('cal-status').textContent = streaming
+      ? (ears ? 'AirPods streaming' : 'Phone motion live')
+      : (ears ? 'Waiting for AirPods stream'
+        : motionAllowed === false ? 'Motion access needed' : 'Waiting for phone motion');
+    $('cal-rate').textContent = streaming ? String(sensorRate()) : '—';
+    // phone mode: offer the in-gesture permission retry whenever it was refused
+    $('cal-allow').hidden = ears || motionAllowed !== false;
+    // which bud (ears only): loc from the newest sample (0 unknown, 1 L, 2 R)
     const newest = w2[w2.length - 1];
-    const loc = streaming && newest ? (newest.loc ?? 0) : 0;
-    $('cal-l').classList.toggle('on', loc === 1);
-    $('cal-r').classList.toggle('on', loc === 2);
-    $('cal-loc-note').textContent = loc === 1 ? 'Left bud' : loc === 2 ? 'Right bud' : '—';
+    if (ears) {
+      const loc = streaming && newest ? (newest.loc ?? 0) : 0;
+      $('cal-l').classList.toggle('on', loc === 1);
+      $('cal-r').classList.toggle('on', loc === 2);
+      $('cal-loc-note').textContent = loc === 1 ? 'Left bud' : loc === 2 ? 'Right bud' : '—';
+    } else {
+      $('cal-loc-note').textContent = streaming ? 'phone in hand' : '—';
+    }
     if (!streaming || !newest) {
       $('cal-pitch').textContent = '--°'; $('cal-roll').textContent = '--°';
       $('cal-bubble').setAttribute('cx', 70); $('cal-bubble').setAttribute('cy', 70);
@@ -1428,7 +1527,7 @@ function calibTick() {
 
     // IMPACT & JUMP on the last 1.5 s: project a* onto gravity WITHOUT mean
     // removal — mean removal would erase the free-fall dip a jump starts with.
-    const w = head.getWindow(1500);
+    const w = sampleWindow(1500);
     let ux = 0, uy = 0, uz = 0;
     for (const s of w) { ux += s.gx; uy += s.gy; uz += s.gz; }
     const un = Math.hypot(ux, uy, uz) || 1; ux /= un; uy /= un; uz /= un;
@@ -1464,7 +1563,7 @@ function calibTick() {
     // STEPS: incremental footfall counting on the 6 s window — mean-removed
     // vertical accel, peaks above max(1.2, 0.8×RMS) m/s², 250 ms min gap
     // (slower than the run band on purpose: marching in place must count).
-    const w6 = head.getWindow(6000);
+    const w6 = sampleWindow(6000);
     if (w6.length >= 16) {
       const { v: v6 } = verticalSeries(w6);
       let rms6 = 0;
@@ -1484,9 +1583,10 @@ function calibTick() {
       $('cal-steprate').textContent = stepTs.length >= 3 && spanS6 > 2
         ? String(Math.round(stepTs.length / spanS6 * 60)) : '--';
 
-      // SWAY sanity: UNGATED swayOf — the run-shaped gates in analyze() discard
+      // SWAY sanity (ears only — from a hand, arm swing IS the lateral motion):
+      // UNGATED swayOf, because the run-shaped gates in analyze() discard
       // violent head-shakes, which froze this number mid-test
-      $('cal-sway').textContent = swayOf(w6).toFixed(2);
+      if (ears) $('cal-sway').textContent = swayOf(w6).toFixed(2);
     }
   } catch { /* the calibration screen must never take the app down */ }
 }
@@ -1494,12 +1594,24 @@ setInterval(calibTick, 100); // ~10 Hz; setInterval, never rAF (throttled webvie
 
 /* ---------- the app loop: ONE 1 Hz interval (never rAF — throttled webviews) ---------- */
 setInterval(() => {
-  // idle: connection pill + stream status
-  const streaming = !!head?.isStreaming();
-  $('conn-dot').classList.toggle('off', !(streaming || mode === 'hand'));
-  $('conn-text').textContent = streaming ? 'AirPods streaming' : (mode === 'ears' ? 'Waiting for AirPods…' : 'Phone ready');
+  // idle: connection pill + stream status, honest per mode
+  const ears = mode === 'ears';
+  const streaming = sensorStreaming();
+  $('conn-dot').classList.toggle('off', !streaming);
+  $('conn-text').textContent = streaming
+    ? (ears ? 'AirPods streaming' : 'Phone motion live')
+    : (ears ? 'Waiting for AirPods…' : 'Phone ready');
   $('stream-dot').classList.toggle('off', !streaming);
-  $('stream-note').textContent = streaming ? 'Receiving head motion' : 'Not streaming';
+  $('stream-note').textContent = streaming
+    ? (ears ? 'Receiving head motion' : 'Receiving phone motion')
+    : (motionAllowed === false && !ears ? 'Motion access needed — start a run to allow' : 'Not streaming');
+
+  // live telemetry indicator — fed by session.js's last ACCEPTED POST
+  try {
+    const live = running && !!sessionMod?.telemetryLive?.();
+    $('tele-dot').classList.toggle('off', !live);
+    $('tele-text').textContent = live ? 'Streaming' : 'Offline';
+  } catch {}
 
   if (!running) return;
 
@@ -1507,9 +1619,9 @@ setInterval(() => {
   const el = Math.floor((Date.now() - runT0) / 1000);
   $('timer').textContent = `${String(Math.floor(el / 3600)).padStart(2, '0')}:${String(Math.floor((el / 60) % 60)).padStart(2, '0')}:${String(el % 60).padStart(2, '0')}`;
 
-  // ears-mode fixture recording (hand mode records in the motion handler)
-  if (recording && mode === 'ears' && head) {
-    for (const s of head.getWindow(1500)) if (s.t > lastRecT) { recBuf.push(s); lastRecT = s.t; }
+  // fixture recording: drain whatever the active sensor buffered since last tick
+  if (recording) {
+    for (const s of sampleWindow(1500)) if (s.t > lastRecT) { recBuf.push(s); lastRecT = s.t; }
   }
 
   // one throwing tick must never silently kill coaching for the rest of the run

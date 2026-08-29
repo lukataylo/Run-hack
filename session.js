@@ -1,7 +1,11 @@
 // session.js — GPS distance, per-second timeline, telemetry beacon, per-runner
 // run history, Insights rendering (Track C). Browser ES module, zero deps.
 
-const TELEMETRY_INTERVAL_MS = 10000;
+// 5 s, not 10: a stream a teammate tunes thresholds against mid-run has to feel
+// live. Failed snapshots are queued and retried on the next tick — a dead spot
+// costs a few seconds of latency instead of the data.
+const TELEMETRY_INTERVAL_MS = 5000;
+const TELEMETRY_QUEUE_MAX = 12;
 const MAX_RUNS_KEPT = 20;
 const GPS_MAX_ACCURACY_M = 30; // ignore fixes worse than this
 const GPS_MAX_JUMP_M = 50;     // ignore teleports
@@ -24,6 +28,42 @@ function runnerNum(user) {
 }
 
 function storageKey(user) { return `runs:${user}`; }
+
+// The device's own telemetry slot, handed out by the /hello check-in. Without
+// it two phones on the same server would interleave into one stream and neither
+// would be readable. Falls back to 1.
+function telemetrySlot() {
+  try {
+    const n = Number(localStorage.getItem('telemetrySlot'));
+    if (Number.isFinite(n) && n >= 1 && n <= 3) return Math.floor(n);
+  } catch { /* private mode / no storage */ }
+  return 1;
+}
+
+function buildStamp() {
+  try { return document.querySelector('meta[name="build"]')?.content || ''; } catch { return ''; }
+}
+
+// The deployed server. Relative URLs are correct everywhere EXCEPT the native
+// shell's offline fallback, where the page is loaded from the app bundle over a
+// custom scheme — there a relative "/telemetry/1" resolves into the bundle
+// handler and the POST vanishes with no error. One helper, used by every
+// server call, so that case can never silently swallow data again.
+const REMOTE_BASE = 'https://form-coach-production-76e3.up.railway.app';
+export function apiBase() {
+  try {
+    const p = location.protocol;
+    if (p === 'http:' || p === 'https:') return '';
+  } catch { /* no location at all */ }
+  return REMOTE_BASE;
+}
+
+// Live-stream indicator source: wall time of the last POST the SERVER accepted.
+// Not "we called fetch" — only an ok response counts.
+let lastTelemetryOkAt = 0;
+export function telemetryLive(withinMs = 15000) {
+  return lastTelemetryOkAt > 0 && Date.now() - lastTelemetryOkAt < withinMs;
+}
 
 function avgOf(timeline, key) {
   let sum = 0, n = 0;
@@ -172,8 +212,22 @@ export class Session {
     this.track = [];
     this._lastFix = null;
     this._watchId = null;
+    // snapshots that failed to send, oldest first; retried before each fresh one
+    this._queue = [];
     this._startGPS();
+    // FIRST snapshot goes out now, not one interval from now: a 20 s run still
+    // produces a stream, and the Live screen's indicator turns green within a
+    // second so the runner can SEE that streaming is alive.
+    try { this._beacon(); } catch { /* never block the run */ }
     this._beaconTimer = setInterval(() => this._beacon(), TELEMETRY_INTERVAL_MS);
+    // a run that ends by the phone locking still has to report: pagehide and
+    // visibilitychange→hidden are the only reliable "we may not run again" hooks
+    this._onHide = () => { try { this._flush(); } catch { /* never */ } };
+    this._onVis = () => { try { if (document.visibilityState === 'hidden') this._flush(); } catch {} };
+    try {
+      if (typeof addEventListener === 'function') addEventListener('pagehide', this._onHide);
+      if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this._onVis);
+    } catch { /* no DOM: telemetry just runs on the timer */ }
   }
 
   _startGPS() {
@@ -274,25 +328,90 @@ export class Session {
     });
   }
 
-  _beacon() {
-    // Fire and forget: never throw, never block, a dead spot never touches the run.
+  // The snapshot a teammate reads mid-run. runnerNum(user) is kept in the body
+  // so an old reader still sees who ran; the STREAM is keyed by device slot.
+  _snapshot() {
+    return JSON.stringify({
+      user: this.user,
+      runner: runnerNum(this.user),
+      mode: this.mode,
+      km: Math.round(this.km * 1000) / 1000,
+      cues: this.cues.slice(-5),
+      timeline: this.timeline.slice(-12),
+      t: Date.now(),
+      build: buildStamp(),
+      slot: telemetrySlot(),
+    });
+  }
+
+  _queueUp(snap) {
     try {
-      const snap = JSON.stringify({
-        user: this.user,
-        mode: this.mode,
-        km: Math.round(this.km * 1000) / 1000,
-        cues: this.cues.slice(-5),
-        timeline: this.timeline.slice(-12),
-        t: Date.now(),
-      });
-      const url = `/telemetry/${runnerNum(this.user)}`;
-      let sent = false;
-      if (navigator.sendBeacon) {
-        try { sent = navigator.sendBeacon(url, new Blob([snap], { type: 'application/json' })); }
-        catch { sent = false; }
+      this._queue.push(snap);
+      // oldest goes first: a stale snapshot is worth less than a recent one
+      while (this._queue.length > TELEMETRY_QUEUE_MAX) this._queue.shift();
+    } catch { /* never */ }
+  }
+
+  // Fire and forget. Never throws, never blocks, never awaits.
+  //
+  // fetch is the PRIMARY path, deliberately — NOT sendBeacon. WebKit (WKWebView
+  // and several iOS Safari versions) silently DROPS a beacon whose Content-Type
+  // is not CORS-safelisted, while sendBeacon still returns true. That made the
+  // old "beacon first, fetch only if it returns false" order deliver nothing
+  // from the iPhone app: `sent` was true, the fallback never ran. /hello always
+  // worked because it is a plain fetch. Only an ok RESPONSE counts as sent.
+  _post(url, snap, requeue) {
+    try {
+      if (typeof fetch === 'function') {
+        fetch(url, {
+          method: 'POST',
+          body: snap,
+          keepalive: true,
+          headers: { 'Content-Type': 'application/json' },
+        })
+          .then((r) => {
+            if (r && r.ok) lastTelemetryOkAt = Date.now();
+            else if (requeue) this._queueUp(snap);
+          })
+          .catch(() => { if (requeue) this._queueUp(snap); });
+        return;
       }
-      if (!sent) {
-        fetch(url, { method: 'POST', body: snap, keepalive: true }).catch(() => {});
+    } catch { /* fall through to the beacon */ }
+    if (!this._beaconPost(snap, url) && requeue) this._queueUp(snap);
+  }
+
+  // sendBeacon, with a CORS-SAFELISTED type. text/plain is safelisted, so
+  // WebKit will not drop it; session-server.js parses the raw body with
+  // JSON.parse and never inspects Content-Type, so the server is happy either
+  // way. Used only where the page may die before a fetch resolves.
+  _beaconPost(snap, url) {
+    try {
+      return !!(navigator.sendBeacon &&
+        navigator.sendBeacon(url, new Blob([snap], { type: 'text/plain' })));
+    } catch { return false; }
+  }
+
+  _beacon() {
+    try {
+      const url = `${apiBase()}/telemetry/${telemetrySlot()}`;
+      // retry the backlog first so the stream stays roughly in order
+      const pending = this._queue;
+      this._queue = [];
+      for (const snap of pending) this._post(url, snap, true);
+      this._post(url, this._snapshot(), true);
+    } catch { /* never */ }
+  }
+
+  // Last-gasp send (page hiding, or stop()). The document may be gone before a
+  // fetch resolves, so the beacon goes FIRST here and keepalive fetch backs it
+  // up. Nothing is re-queued — there may be no next tick.
+  _flush() {
+    try {
+      const url = `${apiBase()}/telemetry/${telemetrySlot()}`;
+      const pending = this._queue;
+      this._queue = [];
+      for (const snap of [...pending, this._snapshot()]) {
+        if (!this._beaconPost(snap, url)) this._post(url, snap, false);
       }
     } catch { /* never */ }
   }
@@ -302,11 +421,15 @@ export class Session {
     this.stopped = true;
     clearInterval(this._beaconTimer);
     try {
+      if (typeof removeEventListener === 'function') removeEventListener('pagehide', this._onHide);
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this._onVis);
+    } catch { /* fine */ }
+    try {
       if (this._watchId != null && navigator.geolocation) {
         navigator.geolocation.clearWatch(this._watchId);
       }
     } catch { /* fine */ }
-    this._beacon(); // final snapshot
+    this._flush(); // final snapshot + whatever is still queued
 
     const tl = this.timeline;
     // fatigue analysis must never be the reason a run fails to save
