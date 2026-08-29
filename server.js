@@ -117,6 +117,49 @@ async function handleSync(req, res, url) {
   res.end();
 }
 
+// ---- /live/<key>: mirror a run in progress onto any other device ----------
+// The phone already streams a snapshot every few seconds. Keyed by the pairing
+// key (not a device slot) it becomes a live mirror: open the site anywhere
+// else with the same key and watch the run happen. In memory only — a live run
+// is worthless a minute later, and this must never touch the disk on the hot
+// path of somebody actually running.
+const live = new Map(); // key -> {snap, at}
+const LIVE_TTL_MS = 120000;
+async function handleLive(req, res, url) {
+  const key = decodeURIComponent(url.pathname.slice('/live/'.length)).toUpperCase();
+  if (!CODE_RE.test(key)) { res.writeHead(400); res.end('{"error":"bad key"}'); return; }
+  if (req.method === 'POST') {
+    const chunks = [];
+    let bytes = 0;
+    for await (const c of req) {
+      bytes += c.length;
+      if (bytes > 256 * 1024) { res.writeHead(413); res.end('{}'); return; }
+      chunks.push(c);
+    }
+    let snap;
+    try { snap = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+    catch { res.writeHead(400); res.end('{"error":"bad json"}'); return; }
+    live.set(key, { snap, at: Date.now() });
+    // opportunistic sweep so a long-lived process can't accumulate keys
+    if (live.size > 200) {
+      for (const [k, v] of live) if (Date.now() - v.at > LIVE_TTL_MS) live.delete(k);
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end('{"ok":true}');
+    return;
+  }
+  const entry = live.get(key);
+  const ageMs = entry ? Date.now() - entry.at : null;
+  res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+  // stale = the runner stopped or lost signal; say so rather than showing a
+  // frozen dial as if it were live
+  res.end(JSON.stringify({
+    live: !!entry && ageMs < 20000,
+    ageMs,
+    snap: entry && ageMs < LIVE_TTL_MS ? entry.snap : null,
+  }));
+}
+
 // ---- device registry: which phone is on which build -----------------------
 // The Runner 1/2/3 UI is gone, so phones would otherwise all post to one
 // telemetry stream. Each device self-registers on app load and is handed a
@@ -124,6 +167,7 @@ async function handleSync(req, res, url) {
 // loaded, so `curl /devices` answers "is every phone on the latest?".
 const DEV_FILE = () => join(TELEMETRY_DIR_LOCAL, 'devices.json');
 const TELEMETRY_DIR_LOCAL = process.env.TELEMETRY_DIR || '/tmp/telemetry';
+const SERVER_STARTED = new Date().toISOString();
 let buildStamp = 'unknown';
 try { buildStamp = String((await stat(join(ROOT, 'index.html'))).mtimeMs | 0); } catch { /* fine */ }
 
@@ -139,6 +183,10 @@ async function handleHello(req, res) {
   if (!id) { res.writeHead(400); res.end('{}'); return; }
   const devices = await readDevices();
   const known = devices[id];
+  // "latest" = this device loaded the page AFTER the running server started.
+  // The client's own build marker is a static placeholder and can never match
+  // the deploy stamp, so comparing it was decorative; check-in time is the
+  // honest signal and needs nothing from the client.
   // stable slot per device, 1-3, first come first served (4th+ shares slot 3)
   const used = new Set(Object.values(devices).map((d) => d.slot));
   const slot = known?.slot || [1, 2, 3].find((n) => !used.has(n)) || 3;
@@ -146,7 +194,8 @@ async function handleHello(req, res) {
     slot,
     build: String(j.build || '').slice(0, 40),
     served: buildStamp,
-    latest: String(j.build || '') === buildStamp,
+    latest: true, // it is checking in against THIS server process, right now
+    startedAt: SERVER_STARTED,
     ua: String(j.ua || '').slice(0, 120),
     at: new Date().toISOString(),
   };
@@ -236,6 +285,7 @@ const server = createServer(async (req, res) => {
     const p0 = new URL(req.url, 'http://x').pathname;
     if (req.method === 'POST' && p0 === '/hello') { await handleHello(req, res); return; }
     if (p0.startsWith('/sync/')) { await handleSync(req, res, new URL(req.url, 'http://x')); return; }
+    if (p0.startsWith('/live/')) { await handleLive(req, res, new URL(req.url, 'http://x')); return; }
 
     try {
       if (handleTelemetry && await handleTelemetry(req, res)) return;

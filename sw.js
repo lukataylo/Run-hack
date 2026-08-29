@@ -1,7 +1,9 @@
 // sw.js — service worker: makes the installed web app work with no signal,
 // which is the same reason the native shell bundles the files. Network-first
 // for the page (so a redeploy is picked up), cache-first for static assets.
-const CACHE = 'formcoach-v1';
+// Bumping this purges every old cache on activate. It must change whenever the
+// caching STRATEGY changes; app code no longer depends on it (see below).
+const CACHE = 'formcoach-v2';
 
 // The app shell. Audio and vendor blobs are cached lazily on first use so the
 // install is fast; a missing clip degrades to the device voice by design.
@@ -29,22 +31,34 @@ self.addEventListener('fetch', (e) => {
   if (request.method !== 'GET') return; // never cache telemetry/sync/tts POSTs
   const url = new URL(request.url);
   if (url.origin !== location.origin) return;
-  // live endpoints must never be served stale
-  if (/^\/(telemetry|sync|hello|devices|tts|bodyimage)/.test(url.pathname)) return;
+  // Live endpoints must never be served stale. Belt AND braces: name them, and
+  // then refuse to cache anything without a file extension — every dynamic
+  // route here is extensionless, so a new endpoint can't silently get cached
+  // the way /live/ did.
+  if (/^\/(telemetry|sync|live|hello|devices|tts|bodyimage)/.test(url.pathname)) return;
+  const looksStatic = /\.[a-z0-9]{2,5}$/i.test(url.pathname) || url.pathname === '/';
+  if (!looksStatic) return;
 
+  // Network-first for the page AND all app code. Cache-first would pin a stale
+  // module forever: a redeploy would hand the phone a NEW index.html running
+  // against OLD js, which breaks the moment the two disagree about a function.
+  // Only big immutable blobs (vendor libs, audio clips, models, icons) are
+  // cache-first — they are content-stable and expensive to refetch.
+  const immutable = /^\/(vendor|audio|assets)\//.test(url.pathname);
   const isDoc = request.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('.html');
-  if (isDoc) {
-    // network-first: a redeploy must reach the runner on the next launch
+  const isCode = url.pathname.endsWith('.js') || url.pathname.endsWith('.webmanifest');
+
+  if (isDoc || (isCode && !immutable)) {
     e.respondWith(
       fetch(request).then((r) => {
         const copy = r.clone();
         caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {});
         return r;
-      }).catch(() => caches.match(request).then((r) => r || caches.match('/index.html')))
+      }).catch(() => caches.match(request).then((r) => r || (isDoc ? caches.match('/index.html') : undefined)))
     );
     return;
   }
-  // cache-first for everything else, filling the cache as files are used
+  // cache-first for the immutable blobs, filling the cache as files are used
   e.respondWith(
     caches.match(request).then((hit) => hit || fetch(request).then((r) => {
       const copy = r.clone();

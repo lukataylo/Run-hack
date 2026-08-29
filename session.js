@@ -398,7 +398,10 @@ export class Session {
       const pending = this._queue;
       this._queue = [];
       for (const snap of pending) this._post(url, snap, true);
-      this._post(url, this._snapshot(), true);
+      const snap = this._snapshot();
+      this._post(url, snap, true);
+      // mirror the run onto any paired device (see sync.js watchLive)
+      import('./sync.js').then((s) => s.pushLive?.(snap)).catch(() => {});
     } catch { /* never */ }
   }
 
@@ -1099,6 +1102,11 @@ function podSVG() {
 }
 
 export function renderInsights(containerEl, run, prevRun) {
+  // The seeded sample exists so an empty app isn't a blank screen — but every
+  // number in it is synthesized. It must never masquerade as a measurement,
+  // and it must never be the baseline a real run is compared against.
+  const isDemo = run?.id === 'demo';
+  if (prevRun?.id === 'demo') prevRun = null;
   injectStyles();
   if (!containerEl) return;
   run = run || {};
@@ -1135,8 +1143,9 @@ export function renderInsights(containerEl, run, prevRun) {
   <div class="si-root">
     <div class="si-hero ${clean ? 'si-hero-clean' : ''}">
       ${ringsSVG()}<div class="si-hero-pod si-pod3d">${podSVG()}</div>
-      <div class="si-eyebrow">${clean ? 'CLEAN RUN' : meta.eyebrow}</div>
-      <h2 class="si-hero-headline">${clean ? 'Clean run. Keep doing exactly this.' : meta.headline}</h2>
+      <div class="si-eyebrow">${isDemo ? 'SAMPLE RUN — NOT YOUR DATA' : clean ? 'CLEAN RUN' : meta.eyebrow}</div>
+      <h2 class="si-hero-headline">${isDemo ? 'This is an example. Run once and it becomes yours.'
+        : clean ? 'Clean run. Keep doing exactly this.' : meta.headline}</h2>
     </div>
 
     <div class="si-row">

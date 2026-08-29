@@ -135,7 +135,9 @@ export function analyze(samples, mode = 'hand') {
   // hr / strideCv / wobble are ADDITIVE fields (null = not measurable this
   // window). Everything already in this shape keeps its meaning and its type.
   const out = {
-    cadence: 0, bounce: 0, impact: 0, asym: 0, sway: 0, score: 0, moving: false, balance: 0.5,
+    // balance is null until enough footfalls are seen to actually split
+    // left from right — 0.5 would be an invented "perfectly balanced"
+    cadence: 0, bounce: 0, impact: 0, asym: 0, sway: 0, score: 0, moving: false, balance: null,
     hr: null, strideCv: null, wobble: null,
   };
   if (!samples || samples.length < 32) return out;

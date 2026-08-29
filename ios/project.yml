@@ -21,6 +21,13 @@ targets:
       - { path: ../music.js, buildPhase: resources, optional: true }
       - { path: ../session.js, buildPhase: resources, optional: true }
       - { path: ../pods3d.js, buildPhase: resources, optional: true }
+      # without these the offline cold-start silently loses phone motion,
+      # the form map and sync — the imports just resolve to null
+      - { path: ../phone.js, buildPhase: resources, optional: true }
+      - { path: ../body.js, buildPhase: resources, optional: true }
+      - { path: ../runner3d.js, buildPhase: resources, optional: true }
+      - { path: ../calib3d.js, buildPhase: resources, optional: true }
+      - { path: ../sync.js, buildPhase: resources, optional: true }
       - { path: ../vendor, buildPhase: resources, type: folder, optional: true }
       - { path: ../audio, buildPhase: resources, type: folder, optional: true }
       - { path: ../assets, buildPhase: resources, type: folder, optional: true }

@@ -150,6 +150,9 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
 #goal-clear[hidden]{display:none}
 #goal-pill{display:flex;align-items:center;gap:10px;margin:0 0 14px;padding:13px 16px}
 #goal-pill[hidden]{display:none}
+/* author display:flex beats the UA [hidden] rule — these rows are mode-gated
+   and would otherwise stay on screen showing controls that can never fire */
+#posture-row[hidden],#cal-sway-row[hidden],#cal-buds[hidden],#live-mirror[hidden]{display:none}
 #goal-remaining{font-size:11px;font-weight:800;letter-spacing:.1em;color:var(--accent2)}
 #goal-remaining.done{color:var(--good)}
 #goal-remaining[hidden]{display:none}
@@ -224,6 +227,19 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
     </div>
     <button id="btn-install" style="margin-top:10px;width:100%;padding:14px 0;border-radius:14px;
       background:var(--grad);color:#fff;font-weight:700">Add to Home Screen</button>
+  </div>
+  <!-- a run happening on a paired device, mirrored here live -->
+  <div class="card" id="live-mirror" hidden style="margin-top:12px;border:1px solid var(--accent)">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="dot" style="background:var(--accent);animation:pulse 1.6s infinite"></span>
+      <span class="eyebrow orange">Live on your other device</span>
+    </div>
+    <div style="display:flex;gap:18px;margin-top:10px;align-items:baseline">
+      <div><span class="num" id="lm-cadence" style="font-size:34px">–</span><span class="sub"> spm</span></div>
+      <div><span class="num" id="lm-score" style="font-size:34px">–</span><span class="sub"> score</span></div>
+      <div><span class="num" id="lm-km" style="font-size:34px">0.00</span><span class="sub"> km</span></div>
+    </div>
+    <div class="sub" id="lm-cue" style="margin-top:6px"></div>
   </div>
   <button id="btn-start">
     <svg class="ic" viewBox="0 0 24 24" style="stroke:none;fill:#fff"><path d="M8 5.5v13l11-6.5z"/></svg>
@@ -432,7 +448,8 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
       <div class="lbl">Pairing code</div>
       <div class="num" id="sync-code" style="font-size:38px;letter-spacing:.06em;margin:6px 0 12px">—</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="ctl-sm" id="btn-sync-new" style="width:auto;height:42px;padding:0 16px;border-radius:12px;color:var(--text);font-weight:700">New code</button>
+        <button class="ctl-sm" id="btn-sync-link" style="width:auto;height:42px;padding:0 16px;border-radius:12px;background:var(--grad);color:#fff;font-weight:700">Copy pair link</button>
+        <button class="ctl-sm" id="btn-sync-new" style="width:auto;height:42px;padding:0 16px;border-radius:12px;color:var(--text);font-weight:700">New key</button>
         <button class="ctl-sm" id="btn-sync-now" style="width:auto;height:42px;padding:0 16px;border-radius:12px;color:var(--text);font-weight:700">Sync now</button>
       </div>
       <div style="display:flex;gap:8px;margin-top:10px">
@@ -604,37 +621,12 @@ $('btn-install').onclick = async () => {
 };
 if (/iPad|iPhone|iPod/.test(navigator.userAgent)) showInstallRow(true);
 
-/* ---------- sync UI ---------- */
-if (syncMod) {
-  $('sync-wrap').hidden = false;
-  const paintSync = () => { $('sync-code').textContent = syncMod.getCode() || '—'; };
-  paintSync();
-  $('btn-sync-new').onclick = () => { syncMod.newCode(); paintSync(); $('sync-status').textContent = 'New code — enter it on your other device.'; };
-  $('btn-sync-use').onclick = () => {
-    const c = syncMod.setCode($('sync-input').value);
-    $('sync-input').value = '';
-    paintSync();
-    $('sync-status').textContent = c ? 'Code set. Tap Sync now.' : 'Enter a code first.';
-  };
-  $('btn-sync-now').onclick = async () => {
-    if (!syncMod.getCode()) { $('sync-status').textContent = 'Set or create a code first.'; return; }
-    $('sync-status').textContent = 'Syncing…';
-    try {
-      const n = await syncMod.sync(user);
-      $('sync-status').textContent = `Synced — ${n} run${n === 1 ? '' : 's'} on this device.`;
-      // canvases measured while their screen is display:none size to 0 — only
-      // repaint a VISIBLE Insights; show() paints it on entry otherwise
-      try { if ($('scr-insights')?.offsetParent !== null) paintInsights(); } catch {}
-      try { paintHistoryScreen(); } catch {}
-      try { paintFormMap(); } catch {}
-    } catch {
-      $('sync-status').textContent = 'Sync failed — check your signal and the code.';
-    }
-  };
-}
 // warm every known clip so first utterances use ElevenLabs, never the device voice
 try {
   const keys = [];
+  // ROAST is a flat array (the others are tables of arrays) — it was missed,
+  // which made the coach screen's opening line speak in the robot voice
+  for (const l of persona?.ROAST || []) if (l.clip) keys.push(l.clip);
   for (const table of [persona?.LINES, persona?.MOTIVATE, persona?.SASSY]) {
     for (const arr of Object.values(table || {})) for (const l of arr) if (l.clip) keys.push(l.clip);
   }
@@ -700,7 +692,96 @@ const setBots = (s) => { try { liveBot?.setState(s); coachBot?.setState(s); } ca
 
 /* ---------- state ---------- */
 const user = '1'; // single-runner app (profiles removed)
+// sync + live mirror init — deferred because it needs `user`, declared below
+function initSyncAndLive() {
+/* ---------- sync: automatic, no ceremony ---------- */
+// An account key is minted on first launch, pairing is one tap on a link, and
+// syncing happens on its own. The buttons exist for reassurance, not because
+// anything depends on you pressing them.
+let syncAuto = null;
+if (syncMod) {
+  $('sync-wrap').hidden = false;
+  const adopted = syncMod.adoptFromUrl();      // arrived via a #pair= link?
+  // a pair link opened into an ALREADY-RUNNING page is a same-document
+  // navigation — no reload, no boot — so adopt on hashchange too
+  addEventListener('hashchange', () => {
+    const k = syncMod.adoptFromUrl();
+    if (k) {
+      paintSync();
+      $('sync-status').textContent = `Paired with ${k}. Pulling runs…`;
+      syncAuto?.now?.();
+    }
+  });
+  const paintSync = () => { $('sync-code').textContent = syncMod.getKey(); };
+  const repaintAll = () => {
+    try { if ($('scr-insights')?.offsetParent !== null) paintInsights(); } catch {}
+    try { paintHistoryScreen(); } catch {}
+    try { paintFormMap(); } catch {}
+  };
+  const said = (n) => {
+    $('sync-status').textContent = n < 0
+      ? 'Offline — runs will sync by themselves when you have signal.'
+      : `Synced — ${n} run${n === 1 ? '' : 's'} on every paired device.`;
+  };
+  paintSync();
+  if (adopted) $('sync-status').textContent = `Paired with ${adopted}. Pulling runs…`;
+
+  // launch + focus + after each run; no button press required
+  syncAuto = syncMod.autoSync(user, (n) => { said(n); repaintAll(); });
+
+  $('btn-sync-new').onclick = () => {
+    syncMod.newKey(); paintSync();
+    $('sync-status').textContent = 'New key — this device is now on its own.';
+  };
+  $('btn-sync-now').onclick = async () => {
+    $('sync-status').textContent = 'Syncing…';
+    said(await syncMod.sync(user));
+    repaintAll();
+  };
+  $('btn-sync-use').onclick = () => {
+    const k = syncMod.setKey($('sync-input').value);
+    $('sync-input').value = '';
+    if (!k) { $('sync-status').textContent = 'That key needs 6 characters.'; return; }
+    paintSync();
+    $('btn-sync-now').onclick();
+  };
+  // one-tap pairing: copy the link, open it on the other device, done
+  $('btn-sync-link').onclick = async () => {
+    const link = syncMod.pairLink();
+    try {
+      await navigator.clipboard.writeText(link);
+      $('sync-status').textContent = 'Pair link copied — open it on your other device.';
+    } catch {
+      // clipboard is blocked in plenty of contexts; show the link instead of failing
+      $('sync-status').textContent = link;
+    }
+  };
+}
+
+/* ---------- live mirror: watch a run happening on another device ---------- */
+// The runner's phone already posts a snapshot every few seconds. Any paired
+// device shows it live, which is what makes the website feel attached to the
+// run instead of being a place you read about it later.
+if (syncMod) {
+  syncMod.watchLive(({ live: isLive, snap }) => {
+    const el = $('live-mirror');
+    if (!el) return;
+    // never shadow the runner's own live screen with a mirror of themselves
+    if (!isLive || !snap || running) { el.hidden = true; return; }
+    el.hidden = false;
+    $('lm-cadence').textContent = snap.cadence != null ? Math.round(snap.cadence) : '–';
+    $('lm-score').textContent = snap.score != null ? Math.round(snap.score) : '–';
+    $('lm-km').textContent = typeof snap.km === 'number' ? snap.km.toFixed(2) : '0.00';
+    $('lm-cue').textContent = snap.cues?.length ? snap.cues[snap.cues.length - 1].text : 'Form is holding.';
+  });
+}
+}
+initSyncAndLive();
+// AirPods motion only exists inside the native shell. Outside it, a persisted
+// 'ears' choice would leave the live screen waiting forever with no error, so
+// force hand mode on the web rather than offer a sensor we cannot read.
 let mode = localStorage.getItem('mode') || 'hand';
+if (mode === 'ears' && !inNativeShell) mode = 'hand';
 let voiceOn = true, musicOn = false; // voiceOn deliberately unpersisted
 let motivateOn = localStorage.getItem('motivate') === '1';
 let postureOn = localStorage.getItem('posture') === '1';
@@ -833,6 +914,9 @@ function paintModeSeg() {
     : 'Phone in hand';
   $('conn-mode').textContent = ears ? 'Ears mode' : 'Hand mode';
   $('stream-lbl').textContent = ears ? 'AirPods stream' : 'Phone motion';
+  // the "needs the iOS app" caveat is about ears mode — showing it in phone
+  // mode would be AirPods copy on a screen the user is not in AirPods mode on
+  $('mode-web-note').hidden = !(ears && !inNativeShell);
   $('calib-row-note').textContent = ears
     ? 'Sanity-check the AirPods sensor chain' : 'Sanity-check the phone sensor chain';
   // posture guard reads HEAD tilt against a calibrated neutral — meaningless
@@ -1113,6 +1197,15 @@ function paintSpark() {
 }
 
 function paintBalance(bal) {
+  // Too few footfalls in the window to split left from right: say so. A
+  // confident 50/50 donut when nothing was measured is the worst kind of lie.
+  if (bal == null) {
+    $('bal-l').innerHTML = '--<small>%</small>';
+    $('bal-r').innerHTML = '--<small>%</small>';
+    $('donut-l').setAttribute('stroke-dasharray', `0 ${2 * Math.PI * 38}`);
+    $('bias-note').textContent = 'Gait balance';
+    return;
+  }
   const l = Math.round(bal * 100), r = 100 - l;
   $('bal-l').innerHTML = `${l}<small>%</small>`;
   $('bal-r').innerHTML = `${r}<small>%</small>`;
@@ -1639,7 +1732,7 @@ setInterval(() => {
       $('impact-val').textContent = m.impact.toFixed(1);
       $('impact-val').className = 'num ' + (m.impact > 3 ? 'warn' : 'ok');
       impacts.push(m.impact);
-      paintBalance(m.balance ?? 0.5);
+      paintBalance(m.balance ?? null);
       if (!$('cue-line').classList.contains('flash')) setBots(m.score >= 85 ? 'happy' : 'working');
 
       // Runway praise: score ≥85 sustained 120 s, once per 5 min at most,
@@ -1661,6 +1754,7 @@ setInterval(() => {
       $('impact-val').textContent = '–';
       $('impact-val').className = 'num';
       $('score-note').textContent = 'Waiting for movement';
+      $('pace-est').textContent = ''; // never keep asserting a speed while stood still
       $('score-note').className = 'sub';
       setBots('listening');
     }
@@ -1749,8 +1843,8 @@ function paintInsights() {
 }
 
 // the web build cannot read AirPods motion — CMHeadphoneMotionManager is
-// native-only, so say so on the sensor row rather than imply otherwise
-try { if (!inNativeShell) $('mode-web-note').hidden = false; } catch {}
+// native-only. paintModeSeg() shows that caveat in ears mode only.
+try { paintModeSeg(); } catch {}
 </script>
 </body>
 </html>
