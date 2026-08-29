@@ -105,7 +105,20 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
 .placeholder{color:#5c5c64;font-size:12px;text-align:center;padding:18px 8px}
 
 /* ---------- coach ---------- */
-#coach-bot{width:150px;height:150px;margin:8px auto}
+/* full-screen living coach stage */
+#coach-stage{position:relative;flex:1;min-height:380px;margin:14px -18px -96px;overflow:hidden;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:radial-gradient(120% 100% at 50% 0%,#1c0d05 0%,#0b0b0e 55%,#09090b 100%)}
+.cs-blob{position:absolute;width:340px;height:340px;border-radius:50%;filter:blur(70px);opacity:.22;pointer-events:none}
+.cs-blob.a{background:#ff5b14;top:-90px;left:-70px;animation:csa 13s ease-in-out infinite alternate}
+.cs-blob.b{background:#ff8a3d;bottom:-120px;right:-90px;animation:csb 17s ease-in-out infinite alternate}
+.cs-blob.c{background:#7a2c07;top:40%;left:55%;width:240px;height:240px;animation:csc 11s ease-in-out infinite alternate}
+@keyframes csa{to{transform:translate(70px,50px) scale(1.25)}}
+@keyframes csb{to{transform:translate(-60px,-70px) scale(1.15)}}
+@keyframes csc{to{transform:translate(-80px,40px) scale(0.85)}}
+#coach-bot{width:220px;height:220px;position:relative;background:transparent;cursor:pointer}
+#coach-word{font-size:30px;font-weight:800;letter-spacing:.28em;margin-top:6px;position:relative}
+#coach-tag{color:var(--dim);font-size:12px;margin-top:8px;position:relative;text-align:center;max-width:240px}
 .cue-card{display:flex;gap:14px;align-items:flex-start;margin-top:10px}
 .cue-card .tag{font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);
   border:1px solid rgba(255,91,20,.4);border-radius:7px;padding:4px 8px;flex:none;margin-top:2px}
@@ -321,27 +334,13 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
     then clears. GPS accuracy is ±10–30 m with ~1 fix a second, so goals under 400 m are demo-grade.</div>
     <button id="goal-clear" hidden>Clear goal</button>
   </div>
-  <div class="bot-slot" id="coach-bot" style="background:var(--card)"><div class="bot-ph" style="width:56px;height:56px"></div></div>
-  <div class="card cue-card"><span class="tag">Cadence</span><span class="txt">“Quicker feet. Shorten your stride.”</span></div>
-  <div class="card cue-card"><span class="tag">Bounce</span><span class="txt">“Too much bounce. Run softer, drive forward.”</span></div>
-  <div class="card cue-card"><span class="tag">Sway</span><span class="txt">“Your head is rocking. Eyes forward, run tall.”</span></div>
-  <div class="card cue-card"><span class="tag">Balance</span><span class="txt">“You're favouring one side. Even it out.”</span></div>
-  <div class="card set-row">
-    <div style="flex:1"><div class="lbl">Motivation mode</div><div class="note">A short boost roughly every ten seconds while you run</div></div>
-    <button class="toggle" id="tgl-motivate"></button>
+  <!-- full-screen living coach: dynamic background + big tap-reactive mascot -->
+  <div id="coach-stage">
+    <div class="cs-blob a"></div><div class="cs-blob b"></div><div class="cs-blob c"></div>
+    <div class="bot-slot" id="coach-bot"><div class="bot-ph" style="width:56px;height:56px"></div></div>
+    <div id="coach-word">RUNWAY</div>
+    <div id="coach-tag">Tap me. Silence on the run means your form is good.</div>
   </div>
-  <div class="card" style="margin-top:12px">
-    <div class="lbl">Coach personality</div>
-    <div class="note" style="margin-bottom:10px">Sassy roasts your effort, never you — and form cues stay sincere.</div>
-    <div class="seg" id="personality-seg">
-      <button data-p="supportive" class="on">Supportive</button>
-      <button data-p="sassy">Sassy</button>
-    </div>
-  </div>
-  <p id="etiquette">Your coach speaks only when it matters: nothing for the first 20 seconds, a fault has to
-  persist for 12 seconds before it earns a cue, cues arrive at least 30 seconds apart, and the same correction
-  is never repeated within 90 seconds — a fix takes about 300 strides to land. One fault at a time, highest
-  priority first. Silence means your form is good.</p>
 </section>
 
 <!-- ================= PROFILE ================= -->
@@ -364,6 +363,18 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
   <div class="card set-row">
     <div style="flex:1"><div class="lbl">Adaptive music</div><div class="note">Generative soundtrack driven by your form</div></div>
     <button class="toggle" id="tgl-music"></button>
+  </div>
+  <div class="card set-row">
+    <div style="flex:1"><div class="lbl">Motivation mode</div><div class="note">A short boost roughly every ten seconds while you run</div></div>
+    <button class="toggle" id="tgl-motivate"></button>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <div class="lbl">Coach personality</div>
+    <div class="note" style="margin-bottom:10px">Sassy roasts your effort, never you — and form cues stay sincere.</div>
+    <div class="seg" id="personality-seg">
+      <button data-p="supportive" class="on">Supportive</button>
+      <button data-p="sassy">Sassy</button>
+    </div>
   </div>
   <div class="card set-row" id="row-calib" style="cursor:pointer">
     <div style="flex:1"><div class="lbl">Calibration</div><div class="note">Sanity-check the AirPods sensor chain</div></div>
@@ -497,6 +508,17 @@ function mountBot(el) {
 }
 const liveBot = mountBot($('live-bot'));
 const coachBot = mountBot($('coach-bot'));
+// the full-screen coach reacts to touch: expression + a spoken line (in-gesture,
+// so audio is unlocked). Sassy personality answers in kind.
+const COACH_TAP_STATES = ['happy', 'celebrate', 'proud', 'suspicious', 'working'];
+let coachTapI = 0;
+$('coach-bot').onclick = () => {
+  try { voice?.unlock?.(); } catch {}
+  coachBot?.setState?.(COACH_TAP_STATES[coachTapI++ % COACH_TAP_STATES.length]);
+  const line = persona?.pick?.(Math.random() < 0.5 ? 'greet' : 'praise');
+  if (line) speak(line.text, line.clip);
+  setTimeout(() => { try { coachBot?.setState?.('idle'); } catch {} }, 2600);
+};
 const setBots = (s) => { try { liveBot?.setState(s); coachBot?.setState(s); } catch {} };
 
 /* ---------- state ---------- */
