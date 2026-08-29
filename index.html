@@ -131,6 +131,16 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
 #goal-remaining.done{color:var(--good)}
 #goal-remaining[hidden]{display:none}
 
+/* ---------- calibration ---------- */
+#cal-buds{display:flex;gap:8px}
+#cal-buds span{width:44px;height:44px;border-radius:12px;background:var(--card2);color:#3c3c42;
+  display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800}
+#cal-buds span.on{background:var(--grad);color:#fff}
+#cal-vbar-wrap{width:18px;height:96px;background:var(--card2);border-radius:9px;position:relative;overflow:hidden;flex:none}
+#cal-vbar{position:absolute;bottom:0;left:0;right:0;height:0%;background:var(--grad);border-radius:9px}
+#cal-jump-flash{color:var(--accent);font-weight:800;min-height:16px}
+#cal-jumps{line-height:1.6}
+
 /* ---------- profile ---------- */
 .set-row{display:flex;align-items:center;gap:12px;padding:16px;margin-top:10px}
 .set-row .lbl{font-weight:700}
@@ -165,6 +175,11 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
   <div class="eyebrow" style="margin-bottom:8px">Runner</div>
   <div class="seg" id="user-seg">
     <button data-u="1">Runner 1</button><button data-u="2">Runner 2</button><button data-u="3">Runner 3</button>
+  </div>
+  <div class="card" id="formmap-card" style="margin-top:14px">
+    <div class="eyebrow">Form map</div>
+    <div id="formmap-slot" style="height:240px;margin-top:8px"></div>
+    <div class="sub" style="text-align:center">Where your last run worked hardest</div>
   </div>
   <div class="card" id="conn-pill">
     <span class="dot off" id="conn-dot"></span>
@@ -344,6 +359,10 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
     <div style="flex:1"><div class="lbl">Adaptive music</div><div class="note">Generative soundtrack driven by your form</div></div>
     <button class="toggle" id="tgl-music"></button>
   </div>
+  <div class="card set-row" id="row-calib" style="cursor:pointer">
+    <div style="flex:1"><div class="lbl">Calibration</div><div class="note">Sanity-check the AirPods sensor chain</div></div>
+    <svg class="ic" viewBox="0 0 24 24" style="color:var(--dim)"><path d="m9 6 6 6-6 6"/></svg>
+  </div>
   <div class="eyebrow" style="margin-top:18px">Data</div>
   <div class="card set-row">
     <div style="flex:1"><div class="lbl">Export last recording</div><div class="note" id="rec-note">No recording yet — use the record button on a run</div></div>
@@ -351,6 +370,69 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
       <svg class="ic" viewBox="0 0 24 24"><path d="M12 4v11m0 0 4-4m-4 4-4-4"/><path d="M5 19h14"/></svg>
     </button>
   </div>
+</section>
+
+<!-- ================= CALIBRATION ================= -->
+<section class="screen" id="scr-calib">
+  <div class="scr-head">
+    <button id="btn-calib-back"><svg class="ic" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <span class="title">Calibration</span>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">Connection</div>
+    <div style="display:flex;align-items:center;gap:14px;margin-top:10px">
+      <span class="dot off" id="cal-dot"></span>
+      <div style="flex:1;min-width:0">
+        <div id="cal-status" style="font-weight:700">Waiting for AirPods stream</div>
+        <div class="sub"><span id="cal-rate">—</span> Hz · <span id="cal-loc-note">—</span></div>
+      </div>
+      <div id="cal-buds" class="num"><span id="cal-l">L</span><span id="cal-r">R</span></div>
+    </div>
+    <div class="note" style="margin-top:10px">Pop one bud out to watch the stream switch. Automatic Ear Detection must be off.</div>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <div class="eyebrow">Head tilt</div>
+    <div style="display:flex;align-items:center;gap:18px;margin-top:10px">
+      <svg id="cal-level" width="140" height="140" viewBox="0 0 140 140" style="flex:none">
+        <circle cx="70" cy="70" r="60" fill="none" stroke="#26262b" stroke-width="1.6"/>
+        <circle cx="70" cy="70" r="30" fill="none" stroke="#26262b" stroke-width="1.6"/>
+        <line x1="70" y1="6" x2="70" y2="134" stroke="#1e1e22" stroke-width="1.2"/>
+        <line x1="6" y1="70" x2="134" y2="70" stroke="#1e1e22" stroke-width="1.2"/>
+        <circle id="cal-bubble" cx="70" cy="70" r="8" fill="url(#dialgrad2)"/>
+        <defs><linearGradient id="dialgrad2" x1="0" y1="1" x2="1" y2="0">
+          <stop offset="0" stop-color="#ff5b14"/><stop offset="1" stop-color="#ff8a3d"/>
+        </linearGradient></defs>
+      </svg>
+      <div>
+        <div class="eyebrow">Pitch</div><div class="num" id="cal-pitch" style="font-size:26px">--°</div>
+        <div class="eyebrow" style="margin-top:10px">Roll</div><div class="num" id="cal-roll" style="font-size:26px">--°</div>
+      </div>
+    </div>
+    <div class="note">Nod, tilt, look around — the dot should follow instantly.</div>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <div class="eyebrow">Impact &amp; jump</div>
+    <div style="display:flex;align-items:center;gap:16px;margin-top:10px">
+      <div id="cal-vbar-wrap"><div id="cal-vbar"></div></div>
+      <div style="flex:1;min-width:0">
+        <div class="eyebrow">Peak</div>
+        <div class="num" id="cal-peak" style="font-size:28px">-- g</div>
+        <div id="cal-jump-flash" class="sub"></div>
+      </div>
+    </div>
+    <div id="cal-jumps" class="sub" style="margin-top:8px"></div>
+    <div class="note">Hop once. We should catch the landing.</div>
+  </div>
+
+  <div class="card set-row" style="margin-top:12px">
+    <div style="flex:1"><div class="lbl">Sway</div><div class="note">Shake your head side to side and watch this rise.</div></div>
+    <span class="num" id="cal-sway" style="font-size:24px">--</span>
+  </div>
+  <div class="note" style="margin-top:10px;color:var(--dim);font-size:11px">Ears-only screen: the AirPods stream
+  from the native app feeds it. Hand-mode motion is not plumbed here.</div>
 </section>
 
 <!-- ================= TAB BAR ================= -->
@@ -415,7 +497,7 @@ function sampleWindow(ms) {
 }
 
 /* ---------- screens ---------- */
-const SCREENS = ['home', 'live', 'insights', 'coach', 'profile'];
+const SCREENS = ['home', 'live', 'insights', 'coach', 'profile', 'calib'];
 function show(name) {
   for (const s of SCREENS) $('scr-' + s).classList.toggle('on', s === name);
   for (const b of document.querySelectorAll('#tabbar button')) b.classList.toggle('on', b.dataset.s === name);
@@ -433,7 +515,7 @@ function paintUserSeg() {
   for (const b of document.querySelectorAll('#user-seg button')) b.classList.toggle('on', b.dataset.u === user);
 }
 for (const b of document.querySelectorAll('#user-seg button'))
-  b.onclick = () => { user = b.dataset.u; localStorage.setItem('user', user); paintUserSeg(); paintInsights(); loadGoal(); paintGoal(); };
+  b.onclick = () => { user = b.dataset.u; localStorage.setItem('user', user); paintUserSeg(); paintInsights(); loadGoal(); paintGoal(); paintFormMap(); };
 paintUserSeg();
 
 function paintModeSeg() {
@@ -461,6 +543,34 @@ function toggleMotivate() {
 $('tgl-motivate').onclick = toggleMotivate;
 $('btn-motivate').onclick = toggleMotivate;
 paintMotivate();
+
+/* ---------- form map (Home): last run's heat on the runner figure ---------- */
+// Dynamic import with catch — a broken body.js must never take the app down.
+// Mounted from the active runner's LAST run (the seeded sample run counts, so
+// it's never empty); re-mounted on runner switch and after each run.
+let bodyMod = null;
+function lastRunBodyMetrics() {
+  try {
+    const runs = sessionMod?.loadRuns?.(user) || [];
+    const run = runs[0];
+    if (!run) return null;
+    const avg = run.avg || {};
+    const tl = run.timeline || [];
+    let bal = null;
+    for (let i = tl.length - 1; i >= 0; i--) {
+      if (typeof tl[i]?.balL === 'number') { bal = tl[i].balL / 100; break; }
+    }
+    return { mode: run.mode, sway: avg.sway, bounce: avg.bounce, impact: avg.impact, balance: bal, asym: avg.asym };
+  } catch { return null; }
+}
+async function paintFormMap() {
+  try {
+    if (!bodyMod) bodyMod = await import('./body.js').catch(() => null);
+    if (!bodyMod?.mountBody) { $('formmap-card').style.display = 'none'; return; }
+    bodyMod.mountBody($('formmap-slot'), lastRunBodyMetrics() || {});
+  } catch { /* decorative */ }
+}
+paintFormMap();
 
 /* ---------- goal run form (Coach tab) — strictly optional, per-runner ---------- */
 // unset (--/--) by default; armed only when the user deliberately sets BOTH
@@ -755,6 +865,7 @@ $('btn-stop').onclick = () => {
   setBots(cueLog.length ? 'proud' : 'celebrate');
   sayPersona(persona?.runEndLine?.(lastRun.score, cueLog.length));
   show('insights');
+  paintFormMap(); // the Home form map now reflects this run
 };
 
 // ears-mode recording: poll the head buffer (no event stream to hook)
@@ -900,6 +1011,90 @@ function paintGoalRemaining(elapsedS) {
     g.textContent = `GOAL ${fmtMMSS(Math.max(0, Math.round(activeGoal.s - elapsedS)))} LEFT`;
   }
 }
+
+/* ---------- calibration screen: AirPods sensor-chain sanity checks ---------- */
+// Reads only the existing head.js buffer — zero new sensor plumbing. Renders
+// placeholders when nothing streams. Ears-only: hand-mode devicemotion is only
+// attached during a run, so it is not fed here (noted on-screen).
+$('row-calib').onclick = () => show('calib');
+$('btn-calib-back').onclick = () => show('profile');
+let calPeakG = 0, calJumps = [], calLastJumpSampleT = -Infinity, calFlashUntil = 0;
+function calibTick() {
+  if (!$('scr-calib').classList.contains('on')) return;
+  try {
+    const streaming = !!head?.isStreaming?.();
+    const w2 = head ? head.getWindow(2000) : [];
+    $('cal-dot').classList.toggle('off', !streaming);
+    $('cal-status').textContent = streaming ? 'AirPods streaming' : 'Waiting for AirPods stream';
+    $('cal-rate').textContent = streaming && w2.length ? String(Math.round(w2.length / 2)) : '—';
+    // which bud: loc from the newest sample (0 unknown, 1 left, 2 right)
+    const newest = w2[w2.length - 1];
+    const loc = streaming && newest ? (newest.loc ?? 0) : 0;
+    $('cal-l').classList.toggle('on', loc === 1);
+    $('cal-r').classList.toggle('on', loc === 2);
+    $('cal-loc-note').textContent = loc === 1 ? 'Left bud' : loc === 2 ? 'Right bud' : '—';
+    if (!streaming || !newest) {
+      $('cal-pitch').textContent = '--°'; $('cal-roll').textContent = '--°';
+      $('cal-bubble').setAttribute('cx', 70); $('cal-bubble').setAttribute('cy', 70);
+      $('cal-vbar').style.height = '0%';
+      $('cal-peak').textContent = '-- g';
+      $('cal-sway').textContent = '--';
+      return;
+    }
+
+    // TILT: pitch/roll from the newest gravity vector. The axis convention for
+    // an in-ear sensor is an UNCALIBRATED approximation (calibration knob) —
+    // the test here is "the dot follows the head instantly", not absolute degrees.
+    const pitch = Math.atan2(-newest.gx, Math.hypot(newest.gy, newest.gz)) * 180 / Math.PI;
+    const roll = Math.atan2(newest.gy, newest.gz) * 180 / Math.PI;
+    $('cal-pitch').textContent = `${pitch.toFixed(0)}°`;
+    $('cal-roll').textContent = `${roll.toFixed(0)}°`;
+    const px = (d) => Math.max(-45, Math.min(45, d)) / 45 * 52; // ±45° spans the target
+    $('cal-bubble').setAttribute('cx', (70 + px(roll)).toFixed(1));
+    $('cal-bubble').setAttribute('cy', (70 + px(pitch)).toFixed(1));
+
+    // IMPACT & JUMP on the last 1.5 s: project a* onto gravity WITHOUT mean
+    // removal — mean removal would erase the free-fall dip a jump starts with.
+    const w = head.getWindow(1500);
+    let ux = 0, uy = 0, uz = 0;
+    for (const s of w) { ux += s.gx; uy += s.gy; uz += s.gz; }
+    const un = Math.hypot(ux, uy, uz) || 1; ux /= un; uy /= un; uz /= un;
+    const v = w.map((s) => s.ax * ux + s.ay * uy + s.az * uz);
+    let pk = 0;
+    for (const x of v) if (Math.abs(x) > pk) pk = Math.abs(x);
+    calPeakG = Math.max(pk / 9.81, calPeakG * 0.995); // slow-decay peak hold
+    $('cal-peak').textContent = `${calPeakG.toFixed(1)} g`;
+    $('cal-vbar').style.height = `${Math.min(100, (Math.abs(v[v.length - 1] || 0) / 29.4) * 100)}%`;
+    // jump = brief free-fall dip (v < -6 m/s² ≈ -0.6 g — calibration knob)
+    // followed by a landing spike > 2 g within 800 ms; each landing sample is
+    // logged once (the window is re-scanned every poll, so dedupe by sample t)
+    outer:
+    for (let i = 0; i < w.length; i++) {
+      if (v[i] < -6 && w[i].t > calLastJumpSampleT) {
+        for (let j = i + 1; j < w.length && w[j].t - w[i].t <= 800; j++) {
+          if (v[j] > 19.6) {
+            calLastJumpSampleT = w[j].t;
+            const g = (v[j] / 9.81).toFixed(1);
+            const d = new Date();
+            calJumps.unshift(`${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')} — ${g} g landing`);
+            calJumps = calJumps.slice(0, 5);
+            $('cal-jump-flash').textContent = `JUMP — ${g} g landing`;
+            $('cal-jumps').innerHTML = calJumps.join('<br>');
+            calFlashUntil = Date.now() + 2500;
+            break outer;
+          }
+        }
+      }
+    }
+    if (calFlashUntil && Date.now() > calFlashUntil) { $('cal-jump-flash').textContent = ''; calFlashUntil = 0; }
+
+    // SWAY sanity: the real analyzer on the live 6 s window (needs enough
+    // motion to pass the moving gate — a vigorous head-shake does)
+    const sm = analyze(head.getWindow(6000), 'ears');
+    $('cal-sway').textContent = sm.moving ? sm.sway.toFixed(2) : '--';
+  } catch { /* the calibration screen must never take the app down */ }
+}
+setInterval(calibTick, 100); // ~10 Hz; setInterval, never rAF (throttled webviews)
 
 /* ---------- the app loop: ONE 1 Hz interval (never rAF — throttled webviews) ---------- */
 setInterval(() => {
