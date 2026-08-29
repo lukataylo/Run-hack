@@ -59,6 +59,52 @@ if (process.env.OPENAI_API_KEY) {
   }, 3000);
 }
 
+// ---- device registry: which phone is on which build -----------------------
+// The Runner 1/2/3 UI is gone, so phones would otherwise all post to one
+// telemetry stream. Each device self-registers on app load and is handed a
+// stable slot (1-3) to keep its stream separate. Also records the build it
+// loaded, so `curl /devices` answers "is every phone on the latest?".
+const DEV_FILE = () => join(TELEMETRY_DIR_LOCAL, 'devices.json');
+const TELEMETRY_DIR_LOCAL = process.env.TELEMETRY_DIR || '/tmp/telemetry';
+let buildStamp = 'unknown';
+try { buildStamp = String((await stat(join(ROOT, 'index.html'))).mtimeMs | 0); } catch { /* fine */ }
+
+async function readDevices() {
+  try { return JSON.parse(await readFile(DEV_FILE(), 'utf8')); } catch { return {}; }
+}
+async function handleHello(req, res) {
+  let body = '';
+  for await (const c of req) { body += c; if (body.length > 4096) break; }
+  let j = {};
+  try { j = JSON.parse(body); } catch { /* tolerate junk */ }
+  const id = String(j.device || '').slice(0, 40).replace(/[^\w-]/g, '');
+  if (!id) { res.writeHead(400); res.end('{}'); return; }
+  const devices = await readDevices();
+  const known = devices[id];
+  // stable slot per device, 1-3, first come first served (4th+ shares slot 3)
+  const used = new Set(Object.values(devices).map((d) => d.slot));
+  const slot = known?.slot || [1, 2, 3].find((n) => !used.has(n)) || 3;
+  devices[id] = {
+    slot,
+    build: String(j.build || '').slice(0, 40),
+    served: buildStamp,
+    latest: String(j.build || '') === buildStamp,
+    ua: String(j.ua || '').slice(0, 120),
+    at: new Date().toISOString(),
+  };
+  try {
+    await mkdir(TELEMETRY_DIR_LOCAL, { recursive: true });
+    await writeFile(DEV_FILE(), JSON.stringify(devices));
+  } catch { /* ephemeral by design */ }
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ slot, build: buildStamp }));
+}
+async function handleDevices(res) {
+  const devices = await readDevices();
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ build: buildStamp, devices }, null, 2));
+}
+
 // ---- /tts: ElevenLabs render for DYNAMIC persona lines --------------------
 // Static lines ship as committed mp3s; dynamic ones (km counts, goal
 // summaries) hit this, cached by text hash. Key stays server-side. The client
@@ -128,6 +174,12 @@ const server = createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
+    // device check-in (POST, so it runs before the GET/HEAD gate below)
+    if (req.method === 'POST' && new URL(req.url, 'http://x').pathname === '/hello') {
+      await handleHello(req, res);
+      return;
+    }
+
     try {
       if (handleTelemetry && await handleTelemetry(req, res)) return;
     } catch (e) {
@@ -139,6 +191,7 @@ const server = createServer(async (req, res) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); res.end('method not allowed'); return; }
 
     const url = new URL(req.url, 'http://x');
+    if (url.pathname === '/devices') { await handleDevices(res); return; }
     if (url.pathname === '/bodyimage') { await handleBodyImage(req, res, url); return; }
     if (url.pathname === '/tts') { await handleTTS(req, res, url); return; }
 
