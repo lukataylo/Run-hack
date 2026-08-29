@@ -6,6 +6,8 @@ const clips = {};       // fault -> Audio (only once confirmed playable)
 const tried = {};       // fault -> true once we've attempted a preload
 let unlocked = false;
 let voice = null;       // chosen speechSynthesis voice
+let currentClip = null; // last Audio element say() started (busy while playing)
+let bridgeUntil = 0;    // native bridge has no completion callback — assume busy until this wall-clock time
 
 const FAULTS = ['cadence', 'bounce', 'asymmetry', 'sway'];
 
@@ -69,6 +71,7 @@ export function say(text, fault) {
     try {
       clip.currentTime = 0;
       const p = clip.play();
+      currentClip = clip;
       // autoplay refusal -> same fallback order as no-clip: bridge, then TTS
       if (p && p.catch) p.catch(() => bridgeOrSpeak(text));
       return;
@@ -83,9 +86,28 @@ function bridgeOrSpeak(text) {
   // AVSpeech), then speechSynthesis
   try {
     const h = window.webkit?.messageHandlers?.say;
-    if (h) { h.postMessage(text); return; }
+    if (h) {
+      h.postMessage(text);
+      // the bridge is fire-and-forget: no completion callback, so assume busy
+      // for a fixed spell. 2500 ms is a calibration knob (~one short line).
+      bridgeUntil = Date.now() + 2500;
+      return;
+    }
   } catch (e) { /* fall through */ }
   speak(text);
+}
+
+// Is anything audibly speaking right now? Best-effort across all three output
+// paths — used to keep optional lines (motivation) from talking over a cue.
+export function isBusy() {
+  try {
+    if (currentClip && !currentClip.paused && !currentClip.ended) return true;
+  } catch { /* Audio may be gone */ }
+  if (Date.now() < bridgeUntil) return true;
+  try {
+    if (typeof speechSynthesis !== 'undefined' && speechSynthesis.speaking) return true;
+  } catch { /* no speechSynthesis */ }
+  return false;
 }
 
 function speak(text) {

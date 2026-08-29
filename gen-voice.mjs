@@ -31,6 +31,22 @@ const CUES = {
   'persona-praise-1':   "That's smooth. Keep exactly this.",
   'persona-praise-2':   "Textbook. Don't change a thing.",
   'persona-praise-3':   "Quiet from me is a compliment. This is why.",
+  // Motivation mode lines (persona.js MOTIVATE) - all static, all pre-rendered.
+  'motivate-cruise-1':  "This is the pace — own it.",
+  'motivate-cruise-2':  "Smooth as it gets; keep exactly this.",
+  'motivate-cruise-3':  "You make this look easy.",
+  'motivate-cruise-4':  "Locked in — nothing for me to do but watch.",
+  'motivate-dig-1':     "Legs are arguing — you get the last word.",
+  'motivate-dig-2':     "This is the part that makes you faster.",
+  'motivate-dig-3':     "Stay with it; the hard minute always passes.",
+  'motivate-dig-4':     "You've beaten tougher patches than this one.",
+  'motivate-finish-1':  "Last stretch — spend whatever's left.",
+  'motivate-finish-2':  "Almost home; hold your shape to the line.",
+  'motivate-finish-3':  "Make the ending the best part.",
+  'motivate-generic-1': "Still moving, still strong — that's the whole job.",
+  'motivate-generic-2': "One step at a time is all this ever takes.",
+  'motivate-generic-3': "Quietly getting it done — I see it.",
+  'motivate-generic-4': "Forward is winning.",
 };
 
 await mkdir('audio', { recursive: true });

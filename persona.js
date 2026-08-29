@@ -24,6 +24,53 @@ export const LINES = {
   ],
 };
 
+// Motivation mode ("motivate" toggle): a short boost roughly every ten seconds
+// while running. Bucketed by run context; every line has a pre-rendered clip.
+export const MOTIVATE = {
+  cruise: [
+    { text: 'This is the pace — own it.', clip: 'motivate-cruise-1' },
+    { text: 'Smooth as it gets; keep exactly this.', clip: 'motivate-cruise-2' },
+    { text: 'You make this look easy.', clip: 'motivate-cruise-3' },
+    { text: 'Locked in — nothing for me to do but watch.', clip: 'motivate-cruise-4' },
+  ],
+  dig: [
+    { text: 'Legs are arguing — you get the last word.', clip: 'motivate-dig-1' },
+    { text: 'This is the part that makes you faster.', clip: 'motivate-dig-2' },
+    { text: 'Stay with it; the hard minute always passes.', clip: 'motivate-dig-3' },
+    { text: "You've beaten tougher patches than this one.", clip: 'motivate-dig-4' },
+  ],
+  finish: [
+    { text: "Last stretch — spend whatever's left.", clip: 'motivate-finish-1' },
+    { text: 'Almost home; hold your shape to the line.', clip: 'motivate-finish-2' },
+    { text: 'Make the ending the best part.', clip: 'motivate-finish-3' },
+  ],
+  generic: [
+    { text: "Still moving, still strong — that's the whole job.", clip: 'motivate-generic-1' },
+    { text: 'One step at a time is all this ever takes.', clip: 'motivate-generic-2' },
+    { text: 'Quietly getting it done — I see it.', clip: 'motivate-generic-3' },
+    { text: 'Forward is winning.', clip: 'motivate-generic-4' },
+  ],
+};
+
+// Per-bucket shuffled deck: deal every line once (no repeats within a cycle),
+// reshuffle only when the deck is exhausted.
+const motivateDecks = {};
+export function pickMotivate(bucket) {
+  const table = MOTIVATE[bucket];
+  if (!table || !table.length) return null;
+  let deck = motivateDecks[bucket];
+  if (!deck || !deck.length) {
+    deck = table.slice();
+    // Fisher–Yates
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    motivateDecks[bucket] = deck;
+  }
+  return deck.pop();
+}
+
 // rotate randomly without immediate repeats
 const lastIdx = {};
 export function pick(event) {

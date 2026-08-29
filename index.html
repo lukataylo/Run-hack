@@ -234,6 +234,9 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
   </div>
 
   <div id="live-ctl">
+    <button class="ctl-sm" id="btn-motivate" title="Motivation mode">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M13 3 6 13.5h4.5L11 21l7-10.5h-4.5L13 3z"/></svg>
+    </button>
     <button class="ctl-sm" id="btn-rec" title="Record fixture">
       <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/></svg>
     </button>
@@ -263,6 +266,10 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
   <div class="card cue-card"><span class="tag">Bounce</span><span class="txt">“Too much bounce. Run softer, drive forward.”</span></div>
   <div class="card cue-card"><span class="tag">Sway</span><span class="txt">“Your head is rocking. Eyes forward, run tall.”</span></div>
   <div class="card cue-card"><span class="tag">Balance</span><span class="txt">“You're favouring one side. Even it out.”</span></div>
+  <div class="card set-row">
+    <div style="flex:1"><div class="lbl">Motivation mode</div><div class="note">A short boost roughly every ten seconds while you run</div></div>
+    <button class="toggle" id="tgl-motivate"></button>
+  </div>
   <p id="etiquette">Your coach speaks only when it matters: nothing for the first 20 seconds, a fault has to
   persist for 12 seconds before it earns a cue, cues arrive at least 30 seconds apart, and the same correction
   is never repeated within 90 seconds — a fix takes about 300 strides to land. One fault at a time, highest
@@ -309,7 +316,7 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
 </div>
 
 <script type="module">
-import { analyze, Coach, verticalSeries } from './coach.js';
+import { analyze, Coach, verticalSeries, CONFIG } from './coach.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -334,7 +341,8 @@ const setBots = (s) => { try { liveBot?.setState(s); coachBot?.setState(s); } ca
 /* ---------- state ---------- */
 let user = localStorage.getItem('user') || '1';
 let mode = localStorage.getItem('mode') || 'hand';
-let voiceOn = true, musicOn = false;
+let voiceOn = true, musicOn = false; // voiceOn deliberately unpersisted
+let motivateOn = localStorage.getItem('motivate') === '1'; // persisted, default off
 let running = false, coach = null, session = null, music = null;
 let runT0 = 0, wakeLock = null;
 let cueLog = [], impacts = [], lastMetrics = null, lastRun = null;
@@ -389,6 +397,20 @@ paintModeSeg();
 
 $('tgl-voice').onclick = () => { voiceOn = !voiceOn; $('tgl-voice').classList.toggle('on', voiceOn); $('btn-voice').classList.toggle('on', voiceOn); };
 $('btn-voice').onclick = () => $('tgl-voice').onclick();
+
+/* ---------- motivation mode: one handler for both controls ---------- */
+function paintMotivate() {
+  $('tgl-motivate').classList.toggle('on', motivateOn);
+  $('btn-motivate').classList.toggle('on', motivateOn);
+}
+function toggleMotivate() {
+  motivateOn = !motivateOn;
+  try { localStorage.setItem('motivate', motivateOn ? '1' : '0'); } catch {}
+  paintMotivate();
+}
+$('tgl-motivate').onclick = toggleMotivate;
+$('btn-motivate').onclick = toggleMotivate;
+paintMotivate();
 $('tgl-music').onclick = () => {
   // the toggle only arms music — playback starts with the run (Start tap is
   // also a user gesture, so the WebAudio unlock still happens in-gesture)
@@ -495,6 +517,8 @@ function speak(text, fault) {
 // failure may ever touch the run loop.
 let lastCueWallT = -Infinity;
 let greeted = false, praiseHighSince = 0, lastPraiseT = -Infinity, lastKmSpoken = 0;
+// motivation-mode scheduling (Date.now() deadlines, driven by the 1 Hz loop)
+let motivateNextAt = 0, lastMotivateKm = 0, lastKmChangeAt = 0;
 function sayPersona(line) {
   try {
     if (!line || !line.text || !voiceOn) return;
@@ -562,6 +586,9 @@ $('btn-start').onclick = async () => {
   if (sessionMod?.Session) { try { session = new sessionMod.Session(mode, user); } catch { session = null; } }
   window.addEventListener('devicemotion', onMotion);
   runT0 = Date.now();
+  // first motivation line lands 15–19 s in; km trackers reset per run
+  motivateNextAt = runT0 + 15000 + Math.random() * 4000;
+  lastMotivateKm = 0; lastKmChangeAt = 0;
   running = true;
   $('cue-line').textContent = 'Listening to your stride…';
   $('cue-line').classList.remove('flash');
@@ -623,6 +650,64 @@ function onCue(cue) {
   el.textContent = cue.text;
   el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
   setBots('alerting');
+}
+
+/* ---------- motivation mode scheduling (driven only by the 1 Hz loop) ---------- */
+// A corrective cue could land within the next 8 s — a motivation line must not
+// collide with it. Mirrors the Coach etiquette clocks (all wall-clock: the app
+// calls coach.update with Date.now()).
+function cueImminent(now) {
+  if (!coach) return false;
+  for (const f of Object.keys(coach.faultSince)) {
+    const earliest = Math.max(
+      coach.faultSince[f] + CONFIG.PERSIST_MS,
+      coach.lastCueT + CONFIG.GAP_MS,
+      (coach.lastFaultT[f] ?? -Infinity) + CONFIG.REPEAT_MS,
+      (coach.t0 ?? now) + CONFIG.MUTE_MS,
+    );
+    if (earliest - now <= 8000) return true;
+  }
+  return false;
+}
+
+function chooseBucket(m) {
+  // 'finish': distance goal 80% done — dormant hook (localStorage 'goalKm' is
+  // unset today, so this branch is NaN-false until goals ship)
+  const goalKm = parseFloat(localStorage.getItem('goalKm'));
+  if (goalKm > 0 && session?.km >= 0.8 * goalKm) return 'finish';
+  if (coach?.faultSince?.cadence !== undefined) return 'dig';
+  if (m.score >= 80) return 'cruise';
+  return 'generic';
+}
+
+function motivateTick(m) {
+  if (!motivateOn || !voiceOn || !running) return;
+  const now = Date.now();
+  if (!m?.moving) {
+    // paused at a light: never speak, and never fire the instant they restart
+    if (motivateNextAt < now + 3000) motivateNextAt = now + 3000;
+    return;
+  }
+  // v2 distance branch: when GPS is live (km advanced within the last 10 s)
+  // pace the boosts by distance — one per ~15 m of progress — else by timer.
+  const km = session?.km;
+  if (typeof km === 'number' && km !== motivateTick._prevKm) {
+    lastKmChangeAt = now;
+    motivateTick._prevKm = km;
+  }
+  const gpsLive = typeof km === 'number' && lastKmChangeAt && now - lastKmChangeAt <= 10000;
+  const due = gpsLive ? km - lastMotivateKm >= 0.015 : now >= motivateNextAt;
+  if (!due) return;
+  // shared gates: never crowd a corrective cue, never talk over anything
+  if (now - lastCueWallT < 8000) return;
+  if (cueImminent(now)) return;
+  if (voice?.isBusy?.()) return;
+  const line = persona?.pickMotivate?.(chooseBucket(m));
+  if (line) {
+    if (gpsLive) lastMotivateKm = km;
+    motivateNextAt = now + 8000 + Math.random() * 4000; // ~10 s spacing
+    speak(line.text, line.clip);
+  }
 }
 
 /* ---------- the app loop: ONE 1 Hz interval (never rAF — throttled webviews) ---------- */
@@ -708,6 +793,9 @@ setInterval(() => {
 
     const cue = coach.update(m, Date.now());
     if (cue) onCue(cue);
+
+    // motivation mode last: it reads the coach clocks the update above just set
+    try { motivateTick(m); } catch {}
   } catch (e) {
     console.error('tick failed', e);
   }
