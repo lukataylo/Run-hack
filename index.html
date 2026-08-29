@@ -1802,11 +1802,12 @@ function motivateTick(m) {
   if (!m?.moving) {
     // paused at a light: never speak boosts, never fire the instant they restart
     if (motivateNextAt < now + 3000) motivateNextAt = now + 3000;
-    // sassy-only: 20 s of standing still earns one jab, ≥2 min apart, and
-    // never inside the start-of-run grace or near a corrective cue
+    // Standing still while the run clock ticks earns a jab QUICKLY — the user's
+    // first test is tapping Start and waiting, and silence there reads as
+    // broken. 8 s of stillness (even right after Start), 60 s between jabs.
     if (!pauseSince) pauseSince = now;
-    if (personality === 'sassy' && now - pauseSince > 20000 && now - lastStoppedSassAt > 120000 &&
-        now - runT0 > 30000 && now - lastCueWallT > 8000 && !voice?.isBusy?.()) {
+    if (personality === 'sassy' && now - pauseSince > 8000 && now - lastStoppedSassAt > 60000 &&
+        now - runT0 > 8000 && now - lastCueWallT > 8000 && !voice?.isBusy?.()) {
       const line = persona?.pick?.('stopped');
       if (line) { lastStoppedSassAt = now; speak(line.text, line.clip); }
     }
