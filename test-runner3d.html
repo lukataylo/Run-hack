@@ -1,0 +1,91 @@
+<!doctype html>
+<!-- test-runner3d.html — bare harness for the articulated 3D runner.
+     Sliders drive the same metric fields the app feeds; heat toggles exercise
+     setHeat per region. Not part of the app flow. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>runner3d test</title>
+<style>
+  body{background:#09090b;color:#f4f4f5;font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;margin:0;padding:20px;display:flex;gap:24px;flex-wrap:wrap}
+  #stage{width:380px;height:440px;background:#0a0a0c;border-radius:18px;overflow:hidden}
+  .panel{background:#17171a;border-radius:18px;padding:16px;width:320px}
+  label{display:block;margin:10px 0 2px;color:#8e8e96;font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+  input[type=range]{width:100%;accent-color:#ff5b14}
+  .val{color:#ff5b14;font-variant-numeric:tabular-nums}
+  .heats label{display:inline-flex;align-items:center;gap:4px;margin:4px 10px 4px 0;text-transform:none;font-size:13px;color:#f4f4f5}
+  button{background:#2a2a30;color:#f4f4f5;border:0;border-radius:9px;padding:8px 14px;margin-top:12px;cursor:pointer}
+  button.on{background:#ff5b14}
+  #log{color:#3ddc84;font-size:12px;white-space:pre-wrap;margin-top:12px}
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div class="panel">
+  <label>Cadence <span class="val" id="v-cad">168</span> spm</label>
+  <input type="range" id="cad" min="120" max="220" value="168">
+  <label>Speed <span class="val" id="v-kmh">11</span> km/h</label>
+  <input type="range" id="kmh" min="5" max="22" value="11" step="0.5">
+  <label>Bounce <span class="val" id="v-bounce">7</span> m/s²</label>
+  <input type="range" id="bounce" min="4" max="14" value="7" step="0.5">
+  <label>Asym (balance-left) <span class="val" id="v-bal">0.50</span></label>
+  <input type="range" id="bal" min="0.25" max="0.75" value="0.5" step="0.01">
+  <label>Sway <span class="val" id="v-sway">0.3</span></label>
+  <input type="range" id="sway" min="0.2" max="0.9" value="0.3" step="0.01">
+  <label>Posture tiltDev <span class="val" id="v-tilt">0</span>°</label>
+  <input type="range" id="tilt" min="0" max="30" value="0">
+  <div class="heats" style="margin-top:12px">
+    <label><input type="checkbox" data-heat="head">head</label>
+    <label><input type="checkbox" data-heat="torso">torso</label>
+    <label><input type="checkbox" data-heat="leftLeg">leftLeg</label>
+    <label><input type="checkbox" data-heat="rightLeg">rightLeg</label>
+    <label><input type="checkbox" data-heat="feet">feet</label>
+    <label><input type="checkbox" data-heat="arms">arms</label>
+  </div>
+  <button id="moving" class="on">moving</button>
+  <div id="log"></div>
+</div>
+<script type="module">
+  const $ = (id) => document.getElementById(id);
+  const { mountRunner } = await import('./runner3d.js');
+  let moving = true;
+  const metrics = () => ({
+    mode: 'ears',
+    cadence: +$('cad').value,
+    estKmh: +$('kmh').value,
+    bounce: +$('bounce').value,
+    balance: +$('bal').value,
+    asym: Math.abs(+$('bal').value - 0.5) * 2,
+    sway: +$('sway').value,
+    tiltDev: +$('tilt').value,
+    moving,
+  });
+  const r = mountRunner($('stage'), metrics());
+  window.__r = r; // for DOM-level gait verification
+  const paint = () => {
+    $('v-cad').textContent = $('cad').value;
+    $('v-kmh').textContent = $('kmh').value;
+    $('v-bounce').textContent = $('bounce').value;
+    $('v-bal').textContent = (+$('bal').value).toFixed(2);
+    $('v-sway').textContent = $('sway').value;
+    $('v-tilt').textContent = $('tilt').value;
+    r.update(metrics());
+  };
+  document.querySelectorAll('input[type=range]').forEach((s) => { s.oninput = paint; });
+  const heat = () => {
+    const h = {};
+    document.querySelectorAll('[data-heat]').forEach((c) => { h[c.dataset.heat] = c.checked ? 0.9 : 0; });
+    r.setHeat(h);
+  };
+  document.querySelectorAll('[data-heat]').forEach((c) => { c.onchange = heat; });
+  $('moving').onclick = () => {
+    moving = !moving;
+    $('moving').classList.toggle('on', moving);
+    $('moving').textContent = moving ? 'moving' : 'standing';
+    r.update(metrics());
+  };
+  $('log').textContent = r ? 'mounted OK' : 'MOUNT FAILED';
+</script>
+</body>
+</html>

@@ -34,6 +34,127 @@ function avgOf(timeline, key) {
   return n ? sum / n : null;
 }
 
+// ---------- run-level fatigue analysis ----------
+
+// Computed once at stop() from the 1 Hz timeline and stored as run.fatigue.
+// Every field is null when the run cannot support it — a 6-minute run has no
+// fatigue story and this must say so rather than invent one.
+//
+//   cadenceSlopePer10Min — Hunter & Smith 2007, "Preferred and optimal stride
+//     frequency, stiffness and economy: changes with fatigue during a 1-h
+//     high-intensity run" (Eur J Appl Physiol 100:653–661): stride frequency
+//     drifts DOWN as a runner fatigues. The red flag is a falling cadence AT
+//     CONSTANT PACE — this number cannot see pace, so read it beside km/estKmh.
+//   onsetS — first second at which a trailing 3-minute mean of cadence departs
+//     by more than 2 SD from the first-10-minute baseline.
+//   cvTrendPct — last-quarter vs first-quarter stride-time CV. Meardon 2011:
+//     stride-time variability rises over a prolonged run. TREND ONLY: the
+//     absolute CV is inflated by 25 Hz quantization (see coach.strideStats).
+//   impactDriftPct — last-quarter vs first-quarter HEAD IMPACT. Derrick 2002
+//     ("Energy absorption of impacts during running at various stride lengths")
+//     and the shock-attenuation literature: the head's impact acceleration is
+//     REGULATED to stay roughly constant while tibial impact varies, so an
+//     upward drift at the head is a real signal that the regulation is failing.
+//     Call this "head impact drift". It is NOT shock attenuation — shock
+//     attenuation is a tibia-to-head TRANSFER RATIO and needs a second sensor
+//     on the shank, which we do not have. Never label it that.
+//   pitchDropDeg — last-quarter minus first-quarter mean head pitch (degrees):
+//     the head dropping as the run wears on. Null unless the app fed pitch into
+//     tick() (coach.analyze supplies it in ears mode with a real quaternion).
+export function analyzeFatigue(timeline) {
+  const out = {
+    cadenceSlopePer10Min: null,
+    onsetS: null,
+    cvTrendPct: null,
+    impactDriftPct: null,
+    pitchDropDeg: null,
+  };
+  const tl = Array.isArray(timeline) ? timeline : [];
+  if (!tl.length) return out;
+
+  // cadence points, sorted, positive-only (a 0 means "not measured", not "slow")
+  const pts = [];
+  for (const e of tl) {
+    if (!e) continue;
+    if (typeof e.t !== 'number' || !isFinite(e.t)) continue;
+    if (typeof e.cadence !== 'number' || !isFinite(e.cadence) || e.cadence <= 0) continue;
+    pts.push([e.t, e.cadence]);
+  }
+  pts.sort((a, b) => a[0] - b[0]);
+
+  // least-squares slope, scaled to spm per 10 minutes
+  if (pts.length >= 30) {
+    let st = 0, sv = 0;
+    for (const [t, v] of pts) { st += t; sv += v; }
+    const mt = st / pts.length, mv = sv / pts.length;
+    let sn = 0, sd = 0;
+    for (const [t, v] of pts) { sn += (t - mt) * (v - mv); sd += (t - mt) * (t - mt); }
+    if (sd > 1e-9) {
+      const per10 = (sn / sd) * 600;
+      if (Number.isFinite(per10)) out.cadenceSlopePer10Min = per10;
+    }
+  }
+
+  // fatigue onset: 10-minute baseline, then a trailing 3-minute mean crossing 2 SD
+  const BASE_S = 600, WIN_S = 180, MIN_RUN_S = 720;
+  const lastT = pts.length ? pts[pts.length - 1][0] : 0;
+  if (pts.length && lastT >= MIN_RUN_S) {
+    const base = [];
+    for (const [t, v] of pts) { if (t <= BASE_S) base.push(v); }
+    if (base.length >= 60) {
+      const bm = base.reduce((s, x) => s + x, 0) / base.length;
+      let b2 = 0;
+      for (const x of base) b2 += (x - bm) * (x - bm);
+      const bsd = Math.sqrt(b2 / base.length);
+      // a perfectly flat baseline has no scale to test against — say null, not "onset at second one"
+      if (bsd > 1e-6) {
+        let lo = 0, hi = 0, sum = 0, cnt = 0;
+        for (let t = BASE_S + WIN_S; t <= lastT; t++) {
+          while (hi < pts.length && pts[hi][0] <= t) { sum += pts[hi][1]; cnt++; hi++; }
+          while (lo < hi && pts[lo][0] < t - WIN_S) { sum -= pts[lo][1]; cnt--; lo++; }
+          if (cnt < WIN_S * 0.5) continue;          // a sparse window is not evidence
+          if (Math.abs(sum / cnt - bm) > 2 * bsd) { out.onsetS = t; break; }
+        }
+      }
+    }
+  }
+
+  out.cvTrendPct = quarterDriftPct(tl, 'strideCv');
+  out.impactDriftPct = quarterDriftPct(tl, 'impact');
+  out.pitchDropDeg = quarterDelta(tl, 'pitch');
+  return out;
+}
+
+// Last-quarter mean minus first-quarter mean, as a % of the first-quarter mean.
+function quarterDriftPct(timeline, key) {
+  const q = quarters(timeline, key);
+  if (!q) return null;
+  if (!(Math.abs(q.first) > 1e-9)) return null;
+  const pct = ((q.last - q.first) / Math.abs(q.first)) * 100;
+  return Number.isFinite(pct) ? pct : null;
+}
+
+// Same split, absolute units (degrees) — a % of an angle whose zero is arbitrary
+// would be meaningless.
+function quarterDelta(timeline, key) {
+  const q = quarters(timeline, key);
+  if (!q) return null;
+  const d = q.last - q.first;
+  return Number.isFinite(d) ? d : null;
+}
+
+function quarters(timeline, key) {
+  const vals = [];
+  for (const e of timeline || []) {
+    const v = e && e[key];
+    if (typeof v === 'number' && isFinite(v)) vals.push(v);
+  }
+  if (vals.length < 8) return null;   // fewer than 2 per quarter is noise, not a trend
+  const q = Math.max(1, Math.floor(vals.length / 4));
+  const mean = (a) => a.reduce((s, x) => s + x, 0) / a.length;
+  return { first: mean(vals.slice(0, q)), last: mean(vals.slice(-q)) };
+}
+
 // ---------- Session ----------
 
 export class Session {
@@ -128,6 +249,13 @@ export class Session {
       asym,
       sway: num(m.sway),
       estKmh: num(m.estKmh), // accel-only speed estimate (GPS-independent)
+      // literature-backed additions (all num()-guarded — null = not measurable
+      // this second, which is normal: hr is null above Nyquist, wobble is null
+      // outside ears mode, strideCv is null when too few footfalls landed).
+      hr: num(m.hr),            // harmonic ratio, vertical — SELF-BASELINE only
+      strideCv: num(m.strideCv), // stride-time CV% — TREND only, absolute inflated at 25 Hz
+      wobble: num(m.wobble),    // head pitch/roll RMS (deg), ears mode
+      pitch: num(m.pitch),      // mean head pitch (deg) — feeds fatigue pitchDropDeg
       score: num(m.score),
       // prefer the analyzer's real balance (left share 0..1) when present;
       // fall back to the asymmetry-split heuristic (uncalibrated L/R labels).
@@ -181,6 +309,9 @@ export class Session {
     this._beacon(); // final snapshot
 
     const tl = this.timeline;
+    // fatigue analysis must never be the reason a run fails to save
+    let fatigue = null;
+    try { fatigue = analyzeFatigue(tl); } catch { fatigue = null; }
     const run = {
       id: `run-${this.startedAt}-${Math.random().toString(36).slice(2, 7)}`,
       user: this.user,
@@ -197,7 +328,12 @@ export class Session {
         impact: avgOf(tl, 'impact'),
         asym: avgOf(tl, 'asym'),
         sway: avgOf(tl, 'sway'),
+        hr: avgOf(tl, 'hr'),
+        strideCv: avgOf(tl, 'strideCv'),
+        wobble: avgOf(tl, 'wobble'),
       },
+      // run-level fatigue story — computed once, here, from the whole timeline
+      fatigue,
       score: avgOf(tl, 'score') == null ? null : Math.round(avgOf(tl, 'score')),
     };
     if (this._goalS != null) {

@@ -17,6 +17,18 @@ export const CONFIG = {
   MOVING_RMS: 3,               // m/s² — below this: not running, no metrics, no cues
   // posture guard (opt-in; needs a Set-level calibration) — calibration knobs
   TILT_DEV_DEG: 12,            // degrees off the calibrated neutral before it's a fault
+  // head orientation stability (ears mode) — CALIBRATION KNOBS.
+  // Pozzo & Berthoz 1990 measured head pitch/roll held under ~7° peak-to-peak
+  // during locomotion by the vestibulocollic reflex; >10° sustained is a
+  // defensible fault line. Our number is an RMS of combined pitch+roll, not a
+  // peak-to-peak, so the mapping from their figure to ours is approximate —
+  // re-fit from fixtures before trusting it.
+  HEAD_WOBBLE_MAX: 10,         // deg — sustained combined pitch/roll RMS = fault
+  // harmonic ratio (Bellanca 2013 / Menz 2003) — calibration knobs except the
+  // Nyquist ceiling, which is physics, not taste
+  HR_HARMONICS: 8,             // harmonics k·f summed into the odd/even ratio
+  HR_NYQUIST_HZ: 12.5,         // AirPods stream ~25 Hz → hard ceiling, NOT a knob
+  HR_MIN_WINDOW_S: 4,          // frequency resolution floor for the Goertzel bank
   // accel-only speed estimate: v ≈ SPEED_K · stepHz · sqrt(vertical oscillation).
   // SPEED_K self-calibrates against GPS when it is live — calibration knob
   SPEED_K: 4.3,
@@ -120,7 +132,12 @@ function resample(t, v, dtMs) {
 }
 
 export function analyze(samples, mode = 'hand') {
-  const out = { cadence: 0, bounce: 0, impact: 0, asym: 0, sway: 0, score: 0, moving: false, balance: 0.5 };
+  // hr / strideCv / wobble are ADDITIVE fields (null = not measurable this
+  // window). Everything already in this shape keeps its meaning and its type.
+  const out = {
+    cadence: 0, bounce: 0, impact: 0, asym: 0, sway: 0, score: 0, moving: false, balance: 0.5,
+    hr: null, strideCv: null, wobble: null,
+  };
   if (!samples || samples.length < 32) return out;
   const n = samples.length;
 
@@ -198,11 +215,34 @@ export function analyze(samples, mode = 'hand') {
     }
   }
 
+  // Sub-sample footfall timing: parabolic fit through each peak's 3 samples.
+  // At 25 Hz one sample is 40 ms, so a raw peak index is only ±20 ms — which
+  // alone manufactures a ~5–6% stride-time CV before any biology. The vertex of
+  // the parabola through (i-1, i, i+1) recovers the peak to a fraction of a
+  // sample and drops that floor to ~1.5–2%.
+  // FREE BONUS — the same fit yields the interpolated peak HEIGHT, and the
+  // asymmetry index below now uses it: discrete sampling used to clip alternate
+  // peaks by different amounts and inflate the Robinson index for free.
+  const peakT = [], peakH = [];
+  for (const i of peaks) {
+    const ym = u[i - 1], y0 = u[i], yp = u[i + 1]; // loop bounds guarantee both neighbours exist
+    const den2 = ym - 2 * y0 + yp;
+    let d = 0;
+    if (Math.abs(den2) > 1e-12) d = 0.5 * (ym - yp) / den2;
+    if (d > 0.5) d = 0.5; else if (d < -0.5) d = -0.5;
+    peakT.push(t[0] + (i + d) * DT);
+    peakH.push(y0 - 0.25 * (ym - yp) * d);
+  }
+
+  // stride-time variability — see strideStats(): the ABSOLUTE CV is inflated by
+  // 25 Hz quantization; only the within-run trend is interpretable.
+  out.strideCv = strideStats(peakT).cvPct;
+
   // asymmetry: alternating odd/even footfall groups, Robinson index of mean peak heights
   if (peaks.length >= 6) {
     let a = 0, ca = 0, b = 0, cb = 0;
     for (let i = 0; i < peaks.length; i++) {
-      if (i % 2 === 0) { a += u[peaks[i]]; ca++; } else { b += u[peaks[i]]; cb++; }
+      if (i % 2 === 0) { a += peakH[i]; ca++; } else { b += peakH[i]; cb++; }
     }
     a /= ca; b /= cb;
     const denom = (a + b) / 2;
@@ -227,6 +267,25 @@ export function analyze(samples, mode = 'hand') {
   // sway (ears mode ONLY — from a hand, arm swing IS the lateral motion)
   if (mode === 'ears') out.sway = swayOf(samples, up);
 
+  // harmonic ratio of the vertical series (null above Nyquist / short windows).
+  // Self-baseline only — no published running norms exist. Never cued.
+  out.hr = harmonicRatio(samples, out.cadence, 'vertical');
+
+  // head orientation stability — ears mode ONLY. From a hand the "head" angles
+  // are the hand's, which says nothing about the neck.
+  // The AirPods stream carries an attitude quaternion, so `wobbleSource` should
+  // read 'quaternion' in the field. If it reads 'gravity' the number is a
+  // degraded-mode readout that over-reads (see headStability) — don't quote it.
+  if (mode === 'ears') {
+    const hs = headStability(samples);
+    if (hs) {
+      out.wobble = hs.wobbleDeg;
+      out.pitch = hs.pitchDeg;
+      out.roll = hs.rollDeg;
+      out.wobbleSource = hs.source;
+    }
+  }
+
   out.score = formScore(out, mode);
   return out;
 }
@@ -239,10 +298,17 @@ export function swayOf(samples, up = null) {
   const n = samples.length;
   if (n < 16) return 0;
   if (!up) up = verticalSeries(samples).up;
-  const e1 = lateralAxis(up);
-  const e2 = cross(up, e1);
-  let sxx = 0, sxy = 0, syy = 0, mx = 0, my = 0;
+  const { l1, l2 } = horizontalAxes(horizontalPair(samples, up));
+  return l1 > 1e-9 ? Math.sqrt(Math.max(0, l2) / l1) : 0;
+}
+
+// Mean-removed horizontal accelerations in a deterministic frame ⊥ up.
+// Shared by swayOf and harmonicRatio so both see the same horizontal plane.
+function horizontalPair(samples, up) {
+  const n = samples.length;
+  const e1 = lateralAxis(up), e2 = cross(up, e1);
   const hx = new Array(n), hy = new Array(n);
+  let mx = 0, my = 0;
   for (let i = 0; i < n; i++) {
     const s = samples[i];
     const du = s.ax * up[0] + s.ay * up[1] + s.az * up[2];
@@ -252,15 +318,235 @@ export function swayOf(samples, up = null) {
     mx += hx[i]; my += hy[i];
   }
   mx /= n; my /= n;
-  for (let i = 0; i < n; i++) {
-    const x = hx[i] - mx, y = hy[i] - my;
-    sxx += x * x; sxy += x * y; syy += y * y;
-  }
+  for (let i = 0; i < n; i++) { hx[i] -= mx; hy[i] -= my; }
+  return { hx, hy };
+}
+
+// Eigendecomposition of the 2×2 horizontal covariance: the principal axis IS
+// the direction of travel when running, so `fore` is the anteroposterior series
+// and `lat` the mediolateral one — no compass needed. Also returns λ1/λ2 so
+// swayOf keeps its exact previous definition.
+function horizontalAxes({ hx, hy }) {
+  const n = hx.length;
+  let sxx = 0, sxy = 0, syy = 0;
+  for (let i = 0; i < n; i++) { sxx += hx[i] * hx[i]; sxy += hx[i] * hy[i]; syy += hy[i] * hy[i]; }
   sxx /= n; sxy /= n; syy /= n;
   const tr = sxx + syy, det = sxx * syy - sxy * sxy;
   const disc = Math.sqrt(Math.max(0, tr * tr - 4 * det));
   const l1 = (tr + disc) / 2, l2 = (tr - disc) / 2;
-  return l1 > 1e-9 ? Math.sqrt(Math.max(0, l2) / l1) : 0;
+  let vx, vy;
+  if (Math.abs(sxy) > 1e-12) { vx = l1 - syy; vy = sxy; }
+  else if (sxx >= syy) { vx = 1; vy = 0; }
+  else { vx = 0; vy = 1; }
+  const vn = Math.hypot(vx, vy) || 1;
+  vx /= vn; vy /= vn;
+  const fore = new Array(n), lat = new Array(n);
+  for (let i = 0; i < n; i++) {
+    fore[i] = hx[i] * vx + hy[i] * vy;
+    lat[i] = -hx[i] * vy + hy[i] * vx;
+  }
+  return { fore, lat, l1, l2 };
+}
+
+// --- Harmonic ratio ---------------------------------------------------------
+// Bellanca, Lowry, VanSwearingen, Brach & Redfern 2013, "Harmonic ratios: a
+// quantification of step to step symmetry" (J Biomech 46:828–831), building on
+// Menz, Lord & Fitzpatrick 2003, "Acceleration patterns of the head and pelvis
+// when walking on level and irregular surfaces" (Gait & Posture 18:35–46).
+//
+// One stride = two steps, so the STRIDE frequency f = (spm/60)/2 Hz is the
+// fundamental. If the two steps are identical the signal repeats every half
+// stride and ALL its energy sits in the EVEN harmonics of f; step-to-step
+// asymmetry leaks energy into the ODD harmonics. Hence
+//     HR(vertical, anteroposterior) = Σ A_even / Σ A_odd    (higher = smoother)
+//     HR(mediolateral)              = Σ A_odd  / Σ A_even
+// The mediolateral convention INVERTS because the body sways side to side once
+// per stride: there, odd IS the symmetric pattern.
+//
+// Amplitudes come from a Goertzel bank — one resonator per k·f, no FFT library,
+// no power-of-two padding, and exact non-bin frequencies. A Hann window keeps
+// the strong even harmonics from leaking into the odd bins we are measuring
+// against (it scales every amplitude equally, so the ratio is untouched).
+//
+// HONESTY: published harmonic-ratio norms are for WALKING, measured at the
+// pelvis or trunk. There are NO published running norms, and none at all for a
+// single in-ear IMU. The absolute number here means nothing against the
+// literature — it is a SELF-BASELINE metric (higher than your own usual =
+// smoother, more symmetric than your own usual). It is reported, never cued.
+export function harmonicRatio(samples, cadenceSpm, axis = 'vertical') {
+  if (!samples || samples.length < 32) return null;
+  if (typeof cadenceSpm !== 'number' || !isFinite(cadenceSpm) || cadenceSpm <= 0) return null;
+  const f = cadenceSpm / 60 / 2; // stride frequency (Hz)
+  if (!(f > 0)) return null;
+  const K = CONFIG.HR_HARMONICS;
+  if (K * f > CONFIG.HR_NYQUIST_HZ) return null;   // top harmonic is above Nyquist: unmeasurable
+  const n = samples.length;
+  const t = samples.map((s) => s.t);
+  const spanS = (t[n - 1] - t[0]) / 1000;
+  if (!Number.isFinite(spanS) || spanS < CONFIG.HR_MIN_WINDOW_S) return null; // too few strides to resolve k·f
+
+  const { v, up } = verticalSeries(samples);
+  let raw;
+  if (axis === 'vertical') raw = v;
+  else {
+    const { fore, lat } = horizontalAxes(horizontalPair(samples, up));
+    raw = (axis === 'fore' || axis === 'foreaft' || axis === 'anteroposterior') ? fore : lat;
+  }
+  for (const x of raw) if (!Number.isFinite(x)) return null;
+
+  // uniform grid — Goertzel assumes even spacing
+  const DT = 20, fs = 1000 / DT;
+  const u = resample(t, raw, DT);
+  const N = u.length;
+  if (N < 32) return null;
+  let mu = 0;
+  for (const x of u) mu += x;
+  mu /= N;
+  const w = new Array(N);
+  for (let i = 0; i < N; i++) {
+    const hann = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (N - 1));
+    w[i] = (u[i] - mu) * hann;   // mean-removed, per the method
+  }
+
+  let even = 0, odd = 0;
+  for (let k = 1; k <= K; k++) {
+    const a = goertzelAmp(w, k * f, fs);
+    if (!Number.isFinite(a)) return null;
+    if (k % 2 === 0) even += a; else odd += a;
+  }
+  const ml = axis === 'lateral' || axis === 'mediolateral';
+  const num = ml ? odd : even, den = ml ? even : odd;
+  if (!(den > 1e-12)) return null;
+  const hr = num / den;
+  return Number.isFinite(hr) ? hr : null;
+}
+
+// Single-frequency Goertzel resonator → amplitude at fHz. O(N) per frequency,
+// which is why a bank of 8 beats an FFT here (and needs no library).
+function goertzelAmp(x, fHz, fs) {
+  const N = x.length;
+  const coeff = 2 * Math.cos((2 * Math.PI * fHz) / fs);
+  let s0 = 0, s1 = 0, s2 = 0;
+  for (let i = 0; i < N; i++) { s0 = x[i] + coeff * s1 - s2; s2 = s1; s1 = s0; }
+  const power = s1 * s1 + s2 * s2 - coeff * s1 * s2;
+  return (2 / N) * Math.sqrt(Math.max(0, power));
+}
+
+// --- Stride-time variability ------------------------------------------------
+// Meardon, Hamill & Derrick 2011, "Running injury and stride time variability
+// over a prolonged run" (Gait & Posture 33:36–40): stride-time CV rises over a
+// prolonged run and is higher in runners with an injury history; healthy
+// running sits at roughly 1–3%.
+//
+// A stride is TWO steps — the same foot twice — so stride time is the interval
+// between ALTERNATE footfalls, not consecutive ones. CV% = SD/mean × 100.
+//
+// CRITICAL HONESTY — do not quote the absolute number: at 25 Hz one sample is
+// 40 ms. On a ~700 ms stride, timing a peak by its raw sample index quantizes
+// to ±20 ms and MANUFACTURES a CV floor of roughly 5–6% out of pure sampling,
+// before any biology. The parabolic interpolation in analyze() recovers
+// sub-sample peak timing and cuts that floor to about 1.5–2% — still the same
+// order as the 1–3% biological signal we are trying to see. So: the ABSOLUTE
+// CV this returns is inflated and must never be compared against Meardon's
+// numbers. Only the WITHIN-RUN TREND is valid (first quarter vs last quarter —
+// see analyzeFatigue in session.js), because the quantization floor is constant
+// across a run and cancels out of a comparison.
+export function strideStats(peakTimesMs) {
+  const p = (peakTimesMs || []).filter((x) => typeof x === 'number' && isFinite(x));
+  if (p.length < 4) return { strideMs: null, cvPct: null, n: 0 };
+  const iv = [];
+  for (let i = 0; i + 2 < p.length; i++) {
+    const d = p[i + 2] - p[i];   // alternate footfalls = one stride
+    if (d > 0) iv.push(d);
+  }
+  if (iv.length < 2) return { strideMs: null, cvPct: null, n: iv.length };
+  let sum = 0;
+  for (const x of iv) sum += x;
+  const mean = sum / iv.length;
+  if (!(mean > 0)) return { strideMs: null, cvPct: null, n: iv.length };
+  let s2 = 0;
+  for (const x of iv) s2 += (x - mean) * (x - mean);
+  const sd = Math.sqrt(s2 / iv.length);
+  return { strideMs: mean, cvPct: (sd / mean) * 100, n: iv.length };
+}
+
+// --- Head orientation stability ---------------------------------------------
+// Pozzo, Berthoz & Lefort 1990, "Head stabilization during various locomotor
+// tasks in humans" (Exp Brain Res 82:97–106): during walking and running the
+// head is actively stabilized in space by the vestibulocollic reflex, holding
+// pitch and roll within roughly 7° peak-to-peak. Sustained excursions past
+// ~10° are a defensible fault (CONFIG.HEAD_WOBBLE_MAX — a calibration knob:
+// our measure is an RMS, theirs a peak-to-peak).
+//
+// Primary path: the AirPods attitude quaternion (samples carrying qw/qx/qy/qz).
+// This is the path the real sensor takes — CMDeviceMotion always carries an
+// attitude — and the only one whose number means what it says.
+// Fallback: the gravity vector alone, which fixes pitch and roll (yaw is
+// unobservable from gravity — we do not need it).
+// HONESTY ABOUT THE FALLBACK: a raw g* vector is gravity PLUS linear
+// acceleration, and during running the stride-band acceleration is the same
+// order as g. So the fallback conflates "the head tilted" with "the body
+// accelerated" and OVER-READS badly — on synthetic 8 m/s² running it returns
+// ~19° where the true tilt is 0°. Low-passing it away would also remove the
+// stride-band head motion we are trying to measure, so there is no fix: the
+// fallback is a degraded-mode readout, not a measurement. The returned `source`
+// field says which path produced the number; trust 'quaternion' only.
+// Angles are averaged circularly so a roll near ±180° cannot wrap and fabricate
+// a huge RMS. wobbleDeg = sqrt(RMS_pitch² + RMS_roll²) about the window means:
+// the combined angular deviation, orientation of the bud in the ear cancelling
+// out because it is the MEAN we deviate from, not an absolute zero.
+export function headStability(samples) {
+  if (!samples || samples.length < 16) return null;
+  const pitch = [], roll = [];
+  const R = 180 / Math.PI;
+  let nQuat = 0;
+  for (const s of samples) {
+    if (!s) continue;
+    let p, r;
+    if (typeof s.qw === 'number' && isFinite(s.qw) && typeof s.qx === 'number' &&
+        typeof s.qy === 'number' && typeof s.qz === 'number') {
+      const nq = Math.hypot(s.qw, s.qx, s.qy, s.qz);
+      if (!(nq > 1e-9)) continue;
+      const qw = s.qw / nq, qx = s.qx / nq, qy = s.qy / nq, qz = s.qz / nq;
+      let sp = 2 * (qw * qy - qz * qx);
+      sp = sp > 1 ? 1 : sp < -1 ? -1 : sp;
+      p = Math.asin(sp);
+      r = Math.atan2(2 * (qw * qx + qy * qz), 1 - 2 * (qx * qx + qy * qy));
+      nQuat++;
+    } else if (typeof s.gx === 'number' && typeof s.gy === 'number' && typeof s.gz === 'number' &&
+               isFinite(s.gx) && isFinite(s.gy) && isFinite(s.gz)) {
+      if (Math.hypot(s.gx, s.gy, s.gz) < 1e-6) continue;
+      r = Math.atan2(s.gy, s.gz);
+      p = Math.atan2(-s.gx, Math.hypot(s.gy, s.gz));
+    } else continue;
+    if (!isFinite(p) || !isFinite(r)) continue;
+    pitch.push(p * R);
+    roll.push(r * R);
+  }
+  if (pitch.length < 16) return null;
+  const ps = angleStats(pitch), rs = angleStats(roll);
+  const wobbleDeg = Math.sqrt(ps.rms * ps.rms + rs.rms * rs.rms);
+  if (!Number.isFinite(wobbleDeg)) return null;
+  return {
+    wobbleDeg, pitchDeg: ps.mean, rollDeg: rs.mean,
+    source: nQuat >= pitch.length / 2 ? 'quaternion' : 'gravity', // 'gravity' = degraded, over-reads
+  };
+}
+
+// Circular mean + RMS of wrapped deviations (degrees) — a ±180° wrap must not
+// read as a 360° swing.
+function angleStats(deg) {
+  let sx = 0, sy = 0;
+  for (const a of deg) { const r = (a * Math.PI) / 180; sx += Math.cos(r); sy += Math.sin(r); }
+  const mean = (Math.atan2(sy, sx) * 180) / Math.PI;
+  let s2 = 0;
+  for (const a of deg) {
+    let d = a - mean;
+    while (d > 180) d -= 360;
+    while (d < -180) d += 360;
+    s2 += d * d;
+  }
+  return { mean, rms: Math.sqrt(s2 / deg.length) };
 }
 
 // Explainable form score: weighted clamped deductions past each threshold.

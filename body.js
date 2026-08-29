@@ -1,6 +1,8 @@
-// body.js — runner-body heat map. Shaded SVG mannequin (side profile, running
-// pose) with heat glows only where we truly measure: head = sway, torso =
-// bounce, legs = L/R balance, feet = impact. Dynamic-imported; zero deps.
+// body.js — runner-body heat map. PRIMARY: articulated 3D running figure
+// (runner3d.js, dynamic-imported with catch) driven by the same metrics.
+// Fallbacks in order: server AI render, then the shaded SVG mannequin (side
+// profile, running pose). Heat glows only where we truly measure: head = sway,
+// torso = bounce, legs = L/R balance, feet = impact. Dynamic-imported; zero deps.
 
 // Severity 0..1 for each region: 0 at the "green" value, 1 at the "red" value.
 // Green/red anchors follow CONFIG thresholds in coach.js — calibration knobs.
@@ -32,8 +34,39 @@ const SPOTS = {
   feet2: { x: 44, y: 178, r: 18 },
 };
 
+// severities regions → runner3d heat regions. frontLeg heats on left overload
+// (balance > 0.5 = fraction-left heavy), rearLeg on right — so front→left,
+// rear→right on the 3D figure. Arms: no direct measurement, never heated.
+function regionHeat(m) {
+  const s = severities(m || {});
+  return {
+    head: s.head || 0, torso: s.torso || 0,
+    leftLeg: s.frontLeg || 0, rightLeg: s.rearLeg || 0,
+    feet: s.feet || 0, arms: 0,
+  };
+}
+
+// el → live 3D runner handle: mountBody is re-called on runner switch / after
+// each run, and WebGL contexts are scarce — reuse the running instance.
+const R3D = new WeakMap();
+
 export function mountBody(el, metrics) {
   if (!el) return { update() {} };
+  let runner = null;
+  let last = metrics || {};
+  const feed = () => {
+    // always pass a plausible cadence so the figure runs even on sparse data
+    const m = { ...last };
+    if (!(m.cadence > 0)) m.cadence = 168; // calibration knob: default gait cadence
+    runner.update(m);
+    runner.setHeat(regionHeat(last));
+  };
+  const prev = R3D.get(el);
+  if (prev?.alive?.()) {
+    runner = prev;
+    feed();
+    return { update(m) { last = m || {}; feed(); } };
+  }
   el.innerHTML = `
   <svg viewBox="0 0 210 240" style="width:100%;height:100%;display:block">
     <defs>
@@ -91,9 +124,23 @@ export function mountBody(el, metrics) {
     };
     poll();
   }
-  tryAI(metrics);
+  // PRIMARY: articulated 3D runner. Dynamic import with catch — if it mounts,
+  // the AI-image fetch is skipped entirely; if not, AI render then SVG.
+  import('./runner3d.js').then((mod) => {
+    const h = mod?.mountRunner?.(el, last);
+    if (h?.alive?.()) {
+      runner = h;
+      R3D.set(el, h);
+      el.querySelector('svg')?.remove(); // SVG fallback no longer needed
+      feed();
+    } else {
+      tryAI(last);
+    }
+  }).catch(() => tryAI(last));
 
   const update = (m) => {
+    last = m || {};
+    if (runner?.alive?.()) { feed(); return; }
     const s = severities(m || {});
     let h = '';
     for (const [k, spot] of Object.entries(SPOTS)) {

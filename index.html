@@ -5,9 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="build" content="dev">
 <title>FORM/COACH</title>
 <link rel="icon" href="assets/icons/favicon.png">
 <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#09090b">
 <style>
 :root{
   --bg:#09090b; --card:#17171a; --card2:#1e1e22; --text:#f4f4f5; --dim:#8e8e96;
@@ -211,6 +214,17 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
     <span class="spacer"></span>
     <span class="eyebrow orange" id="goal-pill-val"></span>
   </div>
+  <!-- PWA install prompt: hidden until beforeinstallprompt fires (Chrome/Android)
+       or we detect iOS Safari, which never fires it and needs the Share sheet -->
+  <div class="card" id="install-row" hidden style="margin-top:12px">
+    <div style="flex:1">
+      <div class="eyebrow">Install</div>
+      <div class="lbl" id="install-label" style="margin-top:4px">Add Form Coach to your home screen</div>
+      <div class="note" id="install-note" hidden>Tap Share, then Add to Home Screen</div>
+    </div>
+    <button id="btn-install" style="margin-top:10px;width:100%;padding:14px 0;border-radius:14px;
+      background:var(--grad);color:#fff;font-weight:700">Add to Home Screen</button>
+  </div>
   <button id="btn-start">
     <svg class="ic" viewBox="0 0 24 24" style="stroke:none;fill:#fff"><path d="M8 5.5v13l11-6.5z"/></svg>
     Start Run
@@ -357,7 +371,10 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
   <div class="scr-head"><span class="title">Profile</span></div>
   <div class="eyebrow" style="margin-top:6px">Sensor</div>
   <div class="card set-row">
-    <div style="flex:1"><div class="lbl">Sensor mode</div><div class="note" id="mode-note">Phone in hand</div></div>
+    <div style="flex:1"><div class="lbl">Sensor mode</div><div class="note" id="mode-note">Phone in hand</div>
+      <!-- the web has no headphone-motion API; say so rather than imply otherwise -->
+      <div class="note" id="mode-web-note" hidden style="margin-top:4px">AirPods head tracking needs the iOS app — the web app uses phone-in-hand.</div>
+    </div>
     <div class="seg mini" id="mode-seg"><button data-m="hand">Phone</button><button data-m="ears">AirPods</button></div>
   </div>
   <div class="card set-row">
@@ -399,6 +416,27 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
     <button class="ctl-sm" id="btn-export" style="width:44px;height:44px">
       <svg class="ic" viewBox="0 0 24 24"><path d="M12 4v11m0 0 4-4m-4 4-4-4"/><path d="M5 19h14"/></svg>
     </button>
+  </div>
+  <!-- Sync: pairing code shared between the app and the website. Hidden when
+       sync.js is missing (dynamic import with catch) — Profile must still work. -->
+  <div id="sync-wrap" hidden>
+    <div class="eyebrow" style="margin-top:18px">Sync</div>
+    <div class="card">
+      <div class="lbl">Pairing code</div>
+      <div class="num" id="sync-code" style="font-size:38px;letter-spacing:.06em;margin:6px 0 12px">—</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="ctl-sm" id="btn-sync-new" style="width:auto;height:42px;padding:0 16px;border-radius:12px;color:var(--text);font-weight:700">New code</button>
+        <button class="ctl-sm" id="btn-sync-now" style="width:auto;height:42px;padding:0 16px;border-radius:12px;color:var(--text);font-weight:700">Sync now</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <input id="sync-input" maxlength="6" placeholder="ABC123" autocapitalize="characters" autocomplete="off"
+          style="flex:1;min-width:0;background:var(--card2);border:1px solid var(--line);border-radius:12px;
+          color:var(--text);padding:11px 12px;font:inherit;font-weight:700;letter-spacing:.08em;text-transform:uppercase">
+        <button class="ctl-sm" id="btn-sync-use" style="width:auto;height:auto;padding:0 16px;border-radius:12px;color:var(--text);font-weight:700">Use code</button>
+      </div>
+      <div class="note" id="sync-status" style="margin-top:10px"></div>
+      <div class="note" style="margin-top:6px">Enter the same code in the app and on the website to share runs between them.</div>
+    </div>
   </div>
 </section>
 
@@ -530,6 +568,18 @@ try {
   voice?.warm?.(keys);
 } catch {}
 import('./pods3d.js').then((m) => m.mount?.($('pods-slot'))).catch(() => {});
+
+// device check-in: identifies this phone, gets a stable telemetry slot, and
+// reports which build it loaded (server compares against the deployed build)
+try {
+  let devId = localStorage.getItem('devId');
+  if (!devId) { devId = 'd' + Math.random().toString(36).slice(2, 10); localStorage.setItem('devId', devId); }
+  const build = document.querySelector('meta[name="build"]')?.content || '';
+  fetch('/hello', { method: 'POST', body: JSON.stringify({ device: devId, build, ua: navigator.userAgent }) })
+    .then((r) => r.json())
+    .then((j) => { if (j?.slot) localStorage.setItem('telemetrySlot', String(j.slot)); })
+    .catch(() => {});
+} catch {}
 
 /* ---------- mascots ---------- */
 function mountBot(el) {
@@ -749,14 +799,16 @@ function lastRunBodyMetrics() {
     for (let i = tl.length - 1; i >= 0; i--) {
       if (typeof tl[i]?.balL === 'number') { bal = tl[i].balL / 100; break; }
     }
-    return { mode: run.mode, sway: avg.sway, bounce: avg.bounce, impact: avg.impact, balance: bal, asym: avg.asym };
+    return { mode: run.mode, cadence: avg.cadence, sway: avg.sway, bounce: avg.bounce, impact: avg.impact, balance: bal, asym: avg.asym };
   } catch { return null; }
 }
 async function paintFormMap() {
   try {
     if (!bodyMod) bodyMod = await import('./body.js').catch(() => null);
     if (!bodyMod?.mountBody) { $('formmap-card').style.display = 'none'; return; }
-    bodyMod.mountBody($('formmap-slot'), lastRunBodyMetrics() || {});
+    const fm = lastRunBodyMetrics() || {};
+    if (!(fm.cadence > 0)) fm.cadence = 168; // plausible default: the 3D figure always runs
+    bodyMod.mountBody($('formmap-slot'), fm);
   } catch { /* decorative */ }
 }
 paintFormMap();
