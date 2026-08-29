@@ -559,6 +559,66 @@ const botMod = await import('./bot.js').catch(() => null);
 const musicMod = await import('./music.js').catch(() => null);
 const sessionMod = await import('./session.js').catch(() => null);
 const persona = await import('./persona.js').catch(() => null);
+const syncMod = await import('./sync.js').catch(() => null);
+
+/* ---------- web-first: PWA install + offline + cross-device sync ---------- */
+// Running inside our own WKWebView shell? Then it is already "installed" and
+// none of the web-install affordances apply.
+const inNativeShell = !!window.webkit?.messageHandlers?.say;
+const isStandalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+try {
+  if ('serviceWorker' in navigator && !inNativeShell) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {}); // offline app shell
+  }
+} catch {}
+
+let deferredPrompt = null;
+function showInstallRow(iosHint) {
+  if (inNativeShell || isStandalone) return;
+  $('install-row').hidden = false;
+  // iOS Safari never fires beforeinstallprompt — it needs the Share sheet, so
+  // the button would be a lie there
+  $('install-note').hidden = !iosHint;
+  $('btn-install').hidden = !!iosHint;
+}
+addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; showInstallRow(false); });
+$('btn-install').onclick = async () => {
+  if (!deferredPrompt) return;
+  try { deferredPrompt.prompt(); await deferredPrompt.userChoice; } catch {}
+  deferredPrompt = null;
+  $('install-row').hidden = true;
+};
+if (/iPad|iPhone|iPod/.test(navigator.userAgent)) showInstallRow(true);
+
+/* ---------- sync UI ---------- */
+if (syncMod) {
+  $('sync-wrap').hidden = false;
+  const paintSync = () => { $('sync-code').textContent = syncMod.getCode() || '—'; };
+  paintSync();
+  $('btn-sync-new').onclick = () => { syncMod.newCode(); paintSync(); $('sync-status').textContent = 'New code — enter it on your other device.'; };
+  $('btn-sync-use').onclick = () => {
+    const c = syncMod.setCode($('sync-input').value);
+    $('sync-input').value = '';
+    paintSync();
+    $('sync-status').textContent = c ? 'Code set. Tap Sync now.' : 'Enter a code first.';
+  };
+  $('btn-sync-now').onclick = async () => {
+    if (!syncMod.getCode()) { $('sync-status').textContent = 'Set or create a code first.'; return; }
+    $('sync-status').textContent = 'Syncing…';
+    try {
+      const n = await syncMod.sync(user);
+      $('sync-status').textContent = `Synced — ${n} run${n === 1 ? '' : 's'} on this device.`;
+      // canvases measured while their screen is display:none size to 0 — only
+      // repaint a VISIBLE Insights; show() paints it on entry otherwise
+      try { if ($('scr-insights')?.offsetParent !== null) paintInsights(); } catch {}
+      try { paintHistoryScreen(); } catch {}
+      try { paintFormMap(); } catch {}
+    } catch {
+      $('sync-status').textContent = 'Sync failed — check your signal and the code.';
+    }
+  };
+}
 // warm every known clip so first utterances use ElevenLabs, never the device voice
 try {
   const keys = [];
@@ -724,7 +784,12 @@ $('btn-ins-back').onclick = () => show(running ? 'live' : 'home');
 
 function paintModeSeg() {
   for (const b of document.querySelectorAll('#mode-seg button')) b.classList.toggle('on', b.dataset.m === mode);
-  $('mode-note').textContent = mode === 'ears' ? 'AirPods in ears — head stability on' : 'Phone in hand';
+  // honest on the web: no browser exposes headphone motion, so ears mode is
+  // only real inside the iOS shell
+  $('mode-note').textContent = mode === 'ears'
+    ? (inNativeShell ? 'AirPods in ears — head stability on'
+      : 'AirPods head tracking needs the iOS app — the web uses phone-in-hand')
+    : 'Phone in hand';
   $('conn-mode').textContent = mode === 'ears' ? 'Ears mode' : 'Hand mode';
 }
 for (const b of document.querySelectorAll('#mode-seg button'))
@@ -1570,6 +1635,10 @@ function paintInsights() {
     sessionMod.renderInsights(body, lastRun || runs[0], runs[1] || (lastRun ? runs[0] : undefined));
   } catch {}
 }
+
+// the web build cannot read AirPods motion — CMHeadphoneMotionManager is
+// native-only, so say so on the sensor row rather than imply otherwise
+try { if (!inNativeShell) $('mode-web-note').hidden = false; } catch {}
 </script>
 </body>
 </html>
