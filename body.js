@@ -67,6 +67,32 @@ export function mountBody(el, metrics) {
     </g>
   </svg>`;
   const heat = el.querySelector('#bd-heat');
+
+  // Futuristic AI render: server-generated per heat signature (cached there).
+  // The SVG stays until (and unless) the image arrives — offline-safe.
+  const bucket = (v) => (v == null ? 0 : v < 0.33 ? 0 : v < 0.66 ? 1 : 2);
+  let aiTries = 0, aiTimer = null;
+  function tryAI(m) {
+    const s = severities(m || {});
+    const sig = `h${bucket(s.head)}-t${bucket(s.torso)}-l${bucket(s.frontLeg)}-r${bucket(s.rearLeg)}-f${bucket(s.feet)}`;
+    clearTimeout(aiTimer);
+    aiTries = 0;
+    const poll = () => {
+      fetch(`/bodyimage?sig=${sig}`).then((r) => {
+        if (r.status === 200) return r.blob().then((b) => {
+          const img = new Image();
+          img.src = URL.createObjectURL(b);
+          img.style.cssText = 'width:100%;height:100%;object-fit:contain;display:block';
+          img.onload = () => { el.replaceChildren(img); };
+        });
+        // 202 = generating (30-60 s); poll with setInterval-style timeouts
+        if (r.status === 202 && aiTries++ < 9) aiTimer = setTimeout(poll, 10000);
+      }).catch(() => {}); // offline/404: SVG stays
+    };
+    poll();
+  }
+  tryAI(metrics);
+
   const update = (m) => {
     const s = severities(m || {});
     let h = '';
