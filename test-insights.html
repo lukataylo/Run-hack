@@ -1,0 +1,131 @@
+<!doctype html>
+<!-- test-insights.html — standalone harness for session.js renderInsights + Session
+     lifecycle. Not part of the app; open directly in a browser. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Insights test</title>
+<style>
+  body{background:#09090b;color:#f4f4f5;margin:0;font-family:-apple-system,system-ui,sans-serif;}
+  .wrap{max-width:390px;margin:0 auto;padding:16px;}
+  .btns{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+  button{background:#17171a;color:#f4f4f5;border:1px solid #2a2a2e;border-radius:10px;
+    padding:8px 14px;font-size:13px;cursor:pointer;}
+  button.active{border-color:#ff5b14;color:#ff5b14;}
+  #lifecycle{font-size:12px;margin:10px 0;padding:10px;border-radius:10px;background:#17171a;}
+  .pass{color:#3ddc84}.fail{color:#ff5b14}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="btns">
+    <button id="b1" class="active">Faulty (hand)</button>
+    <button id="b2">Clean (hand)</button>
+    <button id="b3">Ears + prev</button>
+  </div>
+  <div id="lifecycle">lifecycle test running…</div>
+  <div id="insights"></div>
+</div>
+<script type="module">
+import { Session, loadRuns, renderInsights } from './session.js';
+
+// ---- fabricate plausible runs ----
+function makeTimeline(secs, base) {
+  const tl = [];
+  for (let t = 0; t < secs; t++) {
+    const drift = Math.sin(t / 40) // slow drift over the run
+    tl.push({
+      t,
+      cadence: t < 5 ? null : Math.round(base.cadence + drift * 4 + (Math.random() - 0.5) * 3),
+      bounce: base.bounce + drift * 0.6 + Math.random() * 0.4,
+      impact: base.impact + drift * 0.3 + Math.random() * 0.5,
+      asym: Math.max(0, base.asym + (Math.random() - 0.5) * 0.02),
+      sway: base.sway == null ? null : base.sway + (Math.random() - 0.5) * 0.06,
+      score: Math.round(base.score + drift * 5 + (Math.random() - 0.5) * 4),
+      balL: Math.round(50 - base.asym * 50),
+    });
+  }
+  return tl;
+}
+function avg(tl, k) {
+  const v = tl.map(e => e[k]).filter(x => typeof x === 'number');
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+}
+function makeRun(opts) {
+  const tl = makeTimeline(opts.secs, opts.base);
+  return {
+    id: 'fake-' + opts.id, user: 1, mode: opts.mode,
+    startedAt: Date.now() - opts.ago, duration: opts.secs, km: opts.km,
+    timeline: tl, cues: opts.cues,
+    avg: { cadence: avg(tl,'cadence'), bounce: avg(tl,'bounce'), impact: avg(tl,'impact'),
+           asym: avg(tl,'asym'), sway: avg(tl,'sway') },
+    score: Math.round(avg(tl,'score')),
+  };
+}
+
+const faulty = makeRun({ id:'faulty', mode:'hand', secs: 1500, km: 4.2, ago: 3600e3,
+  base: { cadence: 158, bounce: 11.2, impact: 3.1, asym: 0.06, sway: null, score: 62 },
+  cues: [
+    { fault:'cadence', text:'Quicker feet. Shorten your stride.', t: 130 },
+    { fault:'cadence', text:'Quicker feet. Shorten your stride.', t: 460 },
+    { fault:'bounce', text:'Too much bounce. Run softer, drive forward.', t: 780 },
+  ]});
+const clean = makeRun({ id:'clean', mode:'hand', secs: 1800, km: 5.05, ago: 90000e3,
+  base: { cadence: 174, bounce: 8.1, impact: 2.4, asym: 0.03, sway: null, score: 91 },
+  cues: [] });
+const earsPrev = makeRun({ id:'earsprev', mode:'ears', secs: 1100, km: 3.1, ago: 260000e3,
+  base: { cadence: 165, bounce: 9.9, impact: 2.9, asym: 0.05, sway: 0.55, score: 74 },
+  cues: [ { fault:'sway', text:"Your head is rocking. Eyes forward, run tall.", t: 300 } ]});
+const ears = makeRun({ id:'ears', mode:'ears', secs: 1250, km: 3.6, ago: 172000e3,
+  base: { cadence: 169, bounce: 9.1, impact: 2.6, asym: 0.04, sway: 0.48, score: 81 },
+  cues: [ { fault:'sway', text:"Your head is rocking. Eyes forward, run tall.", t: 400 } ]});
+
+const el = document.getElementById('insights');
+const btns = { b1: () => renderInsights(el, faulty, clean),
+               b2: () => renderInsights(el, clean, null),
+               b3: () => renderInsights(el, ears, earsPrev) };
+for (const [id, fn] of Object.entries(btns)) {
+  document.getElementById(id).addEventListener('click', (e) => {
+    document.querySelectorAll('.btns button').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    fn();
+  });
+}
+btns.b1();
+
+// ---- Session lifecycle + localStorage round-trip ----
+(async () => {
+  const out = [];
+  const ok = (cond, label) => out.push(`<span class="${cond?'pass':'fail'}">${cond?'PASS':'FAIL'}</span> ${label}`);
+  try {
+    localStorage.removeItem('runs:9'); // isolated test user
+    const s = new Session('hand', 9);
+    for (let i = 0; i < 30; i++) {
+      s.tick({ cadence: 168 + i % 5, bounce: 9 + Math.random(), impact: 2.5,
+               asym: 0.04, sway: null, score: 80 + (i % 10), moving: true });
+    }
+    s.tick(null);              // defensive: null metrics tick
+    s.tick({ cadence: null }); // defensive: partial metrics
+    s.logCue({ fault: 'cadence', text: 'Quicker feet. Shorten your stride.', t: 12 });
+    const run = s.stop();
+    ok(run && run.timeline.length === 32, `stop() returns run with ${run.timeline.length} timeline entries`);
+    ok(run.cues.length === 1 && run.cues[0].fault === 'cadence', 'cue logged');
+    ok(typeof run.score === 'number' && run.score > 70, `avg score computed (${run.score})`);
+    const loaded = loadRuns(9);
+    ok(loaded.length === 1 && loaded[0].id === run.id, 'localStorage round-trip: loadRuns finds the saved run');
+    ok(loaded[0].timeline.length === run.timeline.length, 'timeline survives serialization');
+    ok(s.stop() === run, 'second stop() is idempotent');
+    // keep-last-20: save 25 runs, expect 20
+    for (let i = 0; i < 24; i++) { const s2 = new Session('hand', 9); s2.tick({score: 50}); s2.stop(); }
+    ok(loadRuns(9).length === 20, 'history capped at 20 runs');
+    localStorage.removeItem('runs:9');
+  } catch (e) {
+    out.push(`<span class="fail">FAIL threw: ${e.message}</span>`);
+    console.error(e);
+  }
+  document.getElementById('lifecycle').innerHTML = out.join('<br>');
+})();
+</script>
+</body>
+</html>
