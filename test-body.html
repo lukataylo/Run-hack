@@ -1,0 +1,10 @@
+<!doctype html><meta charset="utf-8">
+<title>body test</title>
+<body style="background:#09090b;color:#f4f4f5;font-family:-apple-system,sans-serif;display:flex;gap:20px;padding:20px;flex-wrap:wrap">
+<div style="width:300px"><div style="font-size:11px;color:#8e8e96;text-transform:uppercase;letter-spacing:.14em">Bad form (ears)</div><div id="a" style="width:300px;height:340px;background:#17171a;border-radius:18px;padding:10px"></div></div>
+<div style="width:300px"><div style="font-size:11px;color:#8e8e96;text-transform:uppercase;letter-spacing:.14em">Good form (hand)</div><div id="b" style="width:300px;height:340px;background:#17171a;border-radius:18px;padding:10px"></div></div>
+<script type="module">
+import { mountBody } from './body.js';
+mountBody(document.getElementById('a'), { mode: 'ears', sway: 0.7, bounce: 11, impact: 3.2, balance: 0.42 });
+mountBody(document.getElementById('b'), { mode: 'hand', bounce: 6.5, impact: 1.9, balance: 0.5, asym: 0.04 });
+</script>
