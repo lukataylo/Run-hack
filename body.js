@@ -82,7 +82,7 @@ export function mountBody(el, metrics) {
         if (r.status === 200) return r.blob().then((b) => {
           const img = new Image();
           img.src = URL.createObjectURL(b);
-          img.style.cssText = 'width:100%;height:100%;object-fit:contain;display:block';
+          img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block'; // full bleed
           img.onload = () => { el.replaceChildren(img); };
         });
         // 202 = generating (30-60 s); poll with setInterval-style timeouts

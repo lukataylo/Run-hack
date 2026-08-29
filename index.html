@@ -176,9 +176,11 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
   <div class="seg" id="user-seg">
     <button data-u="1">Runner 1</button><button data-u="2">Runner 2</button><button data-u="3">Runner 3</button>
   </div>
-  <div class="card" id="formmap-card" style="margin-top:14px">
+  <!-- full-bleed: card matches the AI render's near-black so the image edge
+       vanishes; the slot bleeds through the card padding -->
+  <div class="card" id="formmap-card" style="margin-top:14px;background:#0a0a0c;overflow:hidden">
     <div class="eyebrow">Form map</div>
-    <div id="formmap-slot" style="height:240px;margin-top:8px"></div>
+    <div id="formmap-slot" style="height:300px;margin:8px -16px 0"></div>
     <div class="sub" style="text-align:center">Where your last run worked hardest</div>
   </div>
   <div class="card" id="conn-pill">
