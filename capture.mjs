@@ -33,6 +33,9 @@ async function pass(state) {
   }
   let added = 0;
   for (const r of list.runners || []) {
+    // every network call individually guarded: one ECONNRESET mid-poll killed
+    // the whole collector once — a blip must cost one pass, not the process
+    try {
     const stream = await (await fetch(`${BASE}/telemetry/${r.runner}`)).text();
     const lines = stream.split('\n').filter(Boolean);
     const key = `runner-${r.runner}`;
@@ -44,6 +47,7 @@ async function pass(state) {
       added += fresh.length;
     }
     state[key] = lines.length;
+    } catch { /* next pass retries */ }
   }
   try {
     const devices = await (await fetch(`${BASE}/devices`)).text();
