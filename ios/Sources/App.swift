@@ -4,6 +4,7 @@
 import SwiftUI
 import WebKit
 import CoreMotion
+import CoreLocation
 import AVFoundation
 
 // >>> REPLACE-WITH-DEPLOY-URL — set to the Railway URL after the first deploy <<<
@@ -30,6 +31,7 @@ struct WebShell: UIViewRepresentable {
         cfg.userContentController.add(context.coordinator, name: "say")
         let web = WKWebView(frame: .zero, configuration: cfg)
         web.navigationDelegate = context.coordinator
+        web.uiDelegate = context.coordinator
         web.isOpaque = false
         web.backgroundColor = .black
         web.scrollView.contentInsetAdjustmentBehavior = .never
@@ -45,10 +47,26 @@ struct WebShell: UIViewRepresentable {
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 }
 
-final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler, WKUIDelegate {
+    // grant DeviceMotionEvent.requestPermission — without this the Start tap
+    // dies silently in a WKWebView (and js alert() is equally dead)
+    func webView(_ webView: WKWebView,
+                 requestDeviceOrientationAndMotionPermissionFor origin: WKSecurityOrigin,
+                 initiatedByFrame frame: WKFrameInfo,
+                 decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        decisionHandler(.grant)
+    }
+    // complete js alerts so a stray alert() can never hang the page
+    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+        completionHandler()
+    }
     weak var web: WKWebView?
     let motion = CMHeadphoneMotionManager()
     let synth = AVSpeechSynthesizer()
+    // the app itself needs location permission before the page's
+    // watchPosition can work inside a WKWebView
+    let location = CLLocationManager()
     var firstT: TimeInterval?
     var loadedFallback = false
 
@@ -56,6 +74,7 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
         let s = AVAudioSession.sharedInstance()
         try? s.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers, .mixWithOthers])
         try? s.setActive(true)
+        location.requestWhenInUseAuthorization()
     }
 
     // "say" bridge — survives a locked screen, unlike web speechSynthesis

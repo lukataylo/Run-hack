@@ -544,11 +544,11 @@ export function renderInsights(containerEl, run, prevRun) {
   runs.forEach((r, i) => {
     const row = document.createElement('div');
     row.className = 'si-hist-row';
-    const d = new Date(r.startedAt || 0);
-    const when = r.startedAt
+    const d = new Date(r.startedAt || r.t0 || NaN);
+    const when = Number.isFinite(d.getTime())
       ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' · ' +
         d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-      : 'Unknown';
+      : 'Earlier run';
     row.innerHTML = `
       <div class="si-hist-main">
         <div class="si-hist-title">${when}${r.id === run.id ? ' · this run' : ''}</div>

@@ -468,3 +468,9 @@ with asserts.
 - Telemetry is ephemeral; personal-team builds expire in 7 days.
 
 State these rather than let a judge discover them.
+
+## Phase 2 candidates (user-requested, not yet built)
+
+- Adaptive music engine: built and dormant in music.js — needs an audible mix pass + signed balance for pan drift, then surface the toggle.
+- "Hey runway" wake-word while running, to prompt the coach agent by voice.
+- Apple Live Activity / Dynamic Island widget showing live cadence + form score.

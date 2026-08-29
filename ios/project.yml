@@ -9,6 +9,7 @@ targets:
     platform: iOS
     sources:
       - path: Sources
+      - path: Assets.xcassets
       # bundle the whole web app as an offline cold-start fallback
       - { path: ../index.html, buildPhase: resources }
       - { path: ../coach.js, buildPhase: resources }
@@ -28,11 +29,13 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.lukadadiani.airruncoach
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
       path: Info.plist
       properties:
         CFBundleDisplayName: air-run-coach
         NSMotionUsageDescription: air-run-coach reads headphone motion to analyse your running form in real time.
+        NSLocationWhenInUseUsageDescription: air-run-coach uses GPS to measure your run distance.
         UIBackgroundModes: [audio]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UILaunchScreen: {}

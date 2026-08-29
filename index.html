@@ -6,7 +6,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>FORM/COACH</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23ff5b14'/%3E%3Cpath d='M20 44V20h24M20 32h16' stroke='%23fff' stroke-width='6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="icon" href="assets/icons/favicon.png">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
 <style>
 :root{
   --bg:#09090b; --card:#17171a; --card2:#1e1e22; --text:#f4f4f5; --dim:#8e8e96;
@@ -553,12 +554,19 @@ document.addEventListener('visibilitychange', () => {
 /* ---------- run lifecycle ---------- */
 $('btn-start').onclick = async () => {
   // everything below must stay inside the tap gesture: sensor permission + audio unlock
+  let motionDenied = false;
   try {
     if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission) {
       const p = await DeviceMotionEvent.requestPermission();
-      if (p !== 'granted' && mode === 'hand') { alert('Motion access is required for hand mode.'); return; }
+      motionDenied = p !== 'granted';
     }
-  } catch {}
+  } catch { motionDenied = true; }
+  // never block the run on the permission call — in a WKWebView it can fail
+  // even though devicemotion events flow (and alert() is dead there anyway);
+  // if events really are absent, the moving gate just shows "listening"
+  if (motionDenied && mode === 'hand') {
+    $('cue-line').textContent = 'If nothing happens: allow Motion access in Settings.';
+  }
   try { voice?.unlock?.(); } catch {}
   if (!voice) { try { speechSynthesis.speak(new SpeechSynthesisUtterance('')); } catch {} }
   if (musicOn && music) { try { await music.start(); } catch {} }
