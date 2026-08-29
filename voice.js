@@ -78,6 +78,23 @@ export function say(text, fault) {
     } catch (e) { /* fall through */ }
   }
 
+  // 2. dynamic line: server-side ElevenLabs render (cached there), so km
+  // counts and goal summaries get the real Runway voice when online. Tight
+  // timeout — a dead spot must never delay the line past usefulness.
+  if (!fault && unlocked && navigator.onLine !== false) {
+    bridgeUntil = Date.now() + 2500; // hold isBusy() while we fetch
+    fetch(`/tts?text=${encodeURIComponent(text.slice(0, 200))}`, { signal: AbortSignal.timeout(2000) })
+      .then((r) => (r.ok ? r.blob() : Promise.reject()))
+      .then((b) => {
+        const a = new Audio(URL.createObjectURL(b));
+        currentClip = a;
+        bridgeUntil = 0;
+        return a.play();
+      })
+      .catch(() => { bridgeUntil = 0; bridgeOrSpeak(text); });
+    return;
+  }
+
   bridgeOrSpeak(text);
 }
 

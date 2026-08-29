@@ -59,6 +59,48 @@ if (process.env.OPENAI_API_KEY) {
   }, 3000);
 }
 
+// ---- /tts: ElevenLabs render for DYNAMIC persona lines --------------------
+// Static lines ship as committed mp3s; dynamic ones (km counts, goal
+// summaries) hit this, cached by text hash. Key stays server-side. The client
+// treats any failure as "use the device voice" — a dead spot never blocks.
+import { createHash } from 'node:crypto';
+const TTS_DIR = '/tmp/tts';
+const ttsInflight = new Map();
+async function handleTTS(req, res, url) {
+  const text = (url.searchParams.get('text') || '').slice(0, 200).trim();
+  if (!text || !process.env.ELEVENLABS_API_KEY) { res.writeHead(404); res.end(); return; }
+  const file = join(TTS_DIR, createHash('sha1').update(text).digest('hex') + '.mp3');
+  try {
+    const body = await readFile(file);
+    res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'public, max-age=86400' });
+    res.end(body);
+    return;
+  } catch { /* not cached */ }
+  try {
+    if (!ttsInflight.has(file)) {
+      ttsInflight.set(file, (async () => {
+        const r = await fetch('https://api.elevenlabs.io/v1/text-to-speech/pNInz6obpgDQGcFmaJgB?output_format=mp3_44100_64', {
+          method: 'POST',
+          headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, model_id: 'eleven_turbo_v2_5' }),
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!r.ok) throw new Error(`tts ${r.status}`);
+        const buf = Buffer.from(await r.arrayBuffer());
+        await mkdir(TTS_DIR, { recursive: true });
+        await writeFile(file, buf);
+        return buf;
+      })().finally(() => ttsInflight.delete(file)));
+    }
+    const buf = await ttsInflight.get(file);
+    res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'public, max-age=86400' });
+    res.end(buf);
+  } catch {
+    res.writeHead(503);
+    res.end();
+  }
+}
+
 async function handleBodyImage(req, res, url) {
   const sig = url.searchParams.get('sig') || '';
   if (!SIG_RE.test(sig) || !process.env.OPENAI_API_KEY) { res.writeHead(404); res.end(); return; }
@@ -98,6 +140,7 @@ const server = createServer(async (req, res) => {
 
     const url = new URL(req.url, 'http://x');
     if (url.pathname === '/bodyimage') { await handleBodyImage(req, res, url); return; }
+    if (url.pathname === '/tts') { await handleTTS(req, res, url); return; }
 
     // static files with path-traversal protection: resolve, then require under ROOT
     let path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
