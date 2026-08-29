@@ -447,7 +447,9 @@ if (existsSync(FIXTURES)) {
       const a = (ampDeg * Math.sin((2 * Math.PI * 1.4 * i) / 25) * Math.PI) / 180;
       out.push({
         t: i * 40, ax: 0, ay: 0, az: 0, gx: 0, gy: 0, gz: 9.81,
-        qw: Math.cos(a / 2), qx: Math.sin(a / 2), qy: 0, qz: 0, // rock about x = roll
+        // rock about y = PITCH — the one axis posture keeps (roll/yaw mix
+        // with heading on direction changes and are deliberately ignored)
+        qw: Math.cos(a / 2), qx: 0, qy: Math.sin(a / 2), qz: 0,
       });
     }
     return out;
@@ -464,6 +466,18 @@ if (existsSync(FIXTURES)) {
     headStability(mk(12).map(({ qw, qx, qy, qz, ...rest }) => rest))?.source === 'gravity');
   check('headStability: null on empty/short/garbage input',
     headStability([]) === null && headStability(null) === null && headStability([{ t: 0 }]) === null);
+  // pure ROLL rocking must NOT register: wobble is pitch-only by design
+  const mkRoll = (ampDeg) => {
+    const out = [];
+    for (let i = 0; i < 150; i++) {
+      const a = (ampDeg * Math.sin((2 * Math.PI * 1.4 * i) / 25) * Math.PI) / 180;
+      out.push({ t: i * 40, ax: 0, ay: 0, az: 0, gx: 0, gy: 0, gz: 9.81,
+        qw: Math.cos(a / 2), qx: Math.sin(a / 2), qy: 0, qz: 0 });
+    }
+    return out;
+  };
+  check('headStability: roll-only rocking ignored (up/down only, per design)',
+    (headStability(mkRoll(12))?.wobbleDeg ?? 99) < 1);
 }
 
 // ---- run-level fatigue analysis (session.js) ----

@@ -532,7 +532,11 @@ export function headStability(samples) {
   }
   if (pitch.length < 16) return null;
   const ps = angleStats(pitch), rs = angleStats(roll);
-  const wobbleDeg = Math.sqrt(ps.rms * ps.rms + rs.rms * rs.rms);
+  // PITCH-ONLY wobble (was pitch+roll RMS): roll extracted from the attitude
+  // mixes with yaw when the runner changes direction, which corrupted every
+  // head metric on corners. Up/down is heading-independent. (Pozzo 1990
+  // measured both axes; we deliberately keep the robust one.)
+  const wobbleDeg = ps.rms;
   if (!Number.isFinite(wobbleDeg)) return null;
   return {
     wobbleDeg, pitchDeg: ps.mean, rollDeg: rs.mean,
