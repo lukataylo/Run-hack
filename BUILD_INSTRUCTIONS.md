@@ -82,9 +82,11 @@ Owns: `coach.js`, `replay.js` (analysis + cue-policy tests), `index.html`,
 `package.json`, deployment.
 
 Builds: signal processing, cue policy engine, Home + Live-run + Profile screens,
-the 1 Hz app loop, sensor plumbing (DeviceMotionEvent + `window.__head`), iOS
-shell, Railway deploy. Track A commits first (`coach.js` + `replay.js` green is
-the eligibility timestamp) and owns the deployed URL from hour one.
+the 1 Hz app loop, sensor plumbing (DeviceMotionEvent + `window.__head`), the
+native Swift app (see "iOS native app" — a shipped deliverable, with the site as
+the testing surface), Railway deploy. Track A commits first (`coach.js` +
+`replay.js` green is the eligibility timestamp) and owns the deployed URL from
+hour one.
 
 ### Track B — Assistant (the voice in your ears)
 
@@ -289,7 +291,34 @@ lighting; ACES tone mapping; warm key light; slow oscillating rotation; the righ
 bud is `scale.x = -1` of the left. Decorative: wrap the mount in a dynamic import
 with catch — a WebGL failure must never take the app down.
 
-## iOS shell (`ios/`)
+## iOS native app (`ios/`) — a first-class deliverable
+
+The Swift app is shipped alongside the site, not an afterthought: the site is the
+testing/iteration surface (desktop Chrome + synthetic sensors), the native app is
+what runners hold on race day — it's the only path to AirPods motion and
+locked-screen voice. Track A builds and installs it early (step 3), then freezes.
+
+**Toolchain — verified on the build laptop (2026-08-29), do not re-install:**
+
+- Xcode 26.6 (17F113) at `/Applications/Xcode.app`, iOS 26.5 SDK + simulators
+- XcodeGen 2.45.4 (`/opt/homebrew/bin/xcodegen`), Swift 6.3.3, `devicectl` present
+- Codesigning identity available: "Apple Development: luka dadiani" (personal
+  team `75R33YUT6M`) — pass `DEVELOPMENT_TEAM=75R33YUT6M` to xcodebuild
+- Smoke-verified: a minimal XcodeGen + SwiftUI + WKWebView + CoreMotion app
+  compiled clean for the iOS simulator on this machine. The commands below work
+  as-is:
+
+```
+cd ios && xcodegen generate
+# simulator (no signing):
+xcodebuild -project FormCoach.xcodeproj -scheme FormCoach \
+  -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
+# device:
+xcodebuild -project FormCoach.xcodeproj -scheme FormCoach \
+  -destination 'generic/platform=iOS' -allowProvisioningUpdates \
+  DEVELOPMENT_TEAM=75R33YUT6M build
+xcrun devicectl device install app --device <udid> <path-to-FormCoach.app>
+```
 
 XcodeGen `project.yml` (commit it, gitignore the generated xcodeproj): one target,
 bundles ALL web files (index.html, all js, vendor/, audio/) as resources — offline
