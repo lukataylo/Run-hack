@@ -227,6 +227,14 @@ speak an empty utterance — iOS unlocks audio per user gesture.
 
 ## UI (`index.html`) — dark, dense, one accent
 
+**Canonical visual reference: `design/ui-reference.png` (committed).** Match it —
+layout, spacing, card shapes, dial style, chart treatments, tab bar. Two
+deviations only: brand is "FORM/COACH", never ŌURA (no real-brand imitation),
+and the Home hero photo is replaced by the 3D AirPods canvas.
+**App icon reference: `design/app-icons.png`** — five candidates; use the
+**orange tile with the AirPods pair** (top-middle) as the iOS app icon: export
+1024×1024 from the sheet, and give the web page a matching favicon/apple-touch-icon.
+
 Design tokens: bg #09090b, cards #17171a radius 18px, text #f4f4f5, dim #8e8e96,
 accent orange #ff5b14 (gradient to #ff8a3d), good green #3ddc84. Uppercase 10px
 letterspaced eyebrow labels over huge tight-tracked tabular numerals. Tab bar: Home,
@@ -275,21 +283,35 @@ blink on a per-state random interval, gaze wander. States: idle, listening (wait
 for sensor), working, happy (score ≥ 85), suspicious (fault building), alerting
 (cue spoken), sleeping (stopped), celebrate, proud.
 
-Source the expression data from an MIT-licensed open project if you can (we
-extracted 19 expressions from LaoA-GrokBot, attribution kept — **check the license
-before taking character art**; a popular alternative was non-commercial-only and
-unusable). Otherwise draw ~6 simple eye-pair path sets by hand; the spring morph is
-what sells it, not the art.
+**Expression art: use the GrokBot SVG data — already procured and committed at
+`assets/grokbot/original-data.js`** (point-array eye paths from
+[LaoA-GrokBot](https://github.com/zhulin025/LaoA-GrokBot), MIT; LICENSE and
+ATTRIBUTION.md sit beside it). `bot-data.js` imports/adapts these point arrays;
+do not redraw eyes by hand and do not source art from anywhere else — the
+alternative candidates were non-commercial-licensed and unusable.
 
-## 3D AirPods (`pods3d.js`)
+## 3D AirPods (`pods3d.js`) — realistic procured model, procedural fallback
 
-Do NOT download an AirPods model — the free ones are rips of Apple's AR assets with
-unusable provenance. Build procedurally with vendored three.js (MIT, committed):
+**Primary: a realistic procured GLB.** Selected model (license-vetted):
+"Headphones AirPods Pro" by Valentine_crut on Sketchfab — CC-BY 4.0,
+Blender-authored (not an Apple AR-asset rip), 53.2k tris:
+https://sketchfab.com/3d-models/headphones-airpods-pro-a6f024575e904a31b44b25a29d52e718
+Download requires a (free) Sketchfab login — **a human does this step**, choosing
+the glTF/GLB export; commit it as `assets/airpods/airpods-pro.glb` with an
+`ATTRIBUTION.md` (author, URL, CC-BY 4.0). Do NOT substitute other Sketchfab
+results: the top hits ("bashoot", "JY_JY_") are explicit exports of Apple's AR
+demo assets — unusable provenance — and "AirPods Pro 3 by @apple-user" is under
+Sketchfab's Standard license, which forbids redistributing the file in a public
+repo.
+
+Load with vendored three.js (MIT, committed) + GLTFLoader; `RoomEnvironment`
+PMREM lighting; ACES tone mapping; warm key light; slow oscillating rotation.
+
+**Fallback (until the GLB lands, and if it fails to load): build procedurally** —
 scaled spheres for head + angled tip, capsule stem, dark grille circle, metallic
-foot ring; `MeshPhysicalMaterial` white with clearcoat 1; `RoomEnvironment` PMREM
-lighting; ACES tone mapping; warm key light; slow oscillating rotation; the right
-bud is `scale.x = -1` of the left. Decorative: wrap the mount in a dynamic import
-with catch — a WebGL failure must never take the app down.
+foot ring; `MeshPhysicalMaterial` white with clearcoat 1. Same lighting rig; the
+right bud is `scale.x = -1` of the left. Decorative either way: wrap the mount in
+a dynamic import with catch — a WebGL failure must never take the app down.
 
 ## iOS native app (`ios/`) — a first-class deliverable
 
