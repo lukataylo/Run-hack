@@ -9,7 +9,7 @@ const CACHE = 'formcoach-v2';
 // install is fast; a missing clip degrades to the device voice by design.
 const SHELL = [
   '/', '/index.html', '/coach.js', '/session.js', '/voice.js', '/persona.js',
-  '/head.js', '/bot.js', '/bot-data.js', '/body.js', '/music.js',
+  '/head.js', '/phone.js', '/bot.js', '/bot-data.js', '/body.js', '/music.js',
   '/manifest.webmanifest', '/assets/icons/icon-192.png',
 ];
 

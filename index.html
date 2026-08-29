@@ -45,9 +45,55 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
 /* ---------- home ---------- */
 #brand{font-size:22px;font-weight:800;letter-spacing:.02em}
 #brand em{font-style:normal;color:var(--accent)}
+#home-top{display:flex;align-items:center;gap:10px}
+#conn{display:flex;align-items:center;gap:9px}
+#conn-txt{text-align:right;line-height:1.25}
+#conn-name{font-size:13px;font-weight:600}
+#conn-state{font-size:12px;color:var(--dim)}
+#conn svg{width:26px;height:26px;color:var(--text)}
 #home-hero h1{font-size:44px;line-height:1.02;letter-spacing:-.035em;font-weight:800;margin:8px 0 10px}
 #home-hero h1 .alt{color:var(--accent)}
 #home-hero p{color:var(--dim);max-width:280px}
+
+/* today's form card */
+#form-card{margin-top:16px}
+#form-body{display:flex;gap:12px;align-items:flex-start;margin-top:12px}
+#form-score-col{flex:none}
+#form-score{font-size:50px;line-height:1}
+#form-of{font-size:15px;color:var(--dim);font-weight:700;margin-left:2px}
+#form-word{margin-top:16px;font-size:15px;font-weight:600;min-height:19px}
+#form-chart{flex:1;min-width:0;display:flex;gap:7px}
+#form-plot{flex:1;min-width:0}
+#form-spark{width:100%;height:86px;display:block}
+#form-axis{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-top:5px}
+#form-scale{flex:none;height:86px;display:flex;flex-direction:column;justify-content:space-between;
+  font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums;text-align:right}
+#form-caption{margin-top:12px}
+#form-caption[hidden]{display:none}
+
+/* three-up stat card */
+#stat3{display:flex;padding:16px 4px;margin-top:12px}
+#stat3 .col{flex:1;min-width:0;padding:0 10px}
+#stat3 .col+.col{border-left:1px solid var(--line)}
+#stat3 .v{display:flex;align-items:baseline;gap:4px;margin-top:9px}
+#stat3 .v .num{font-size:23px}
+#stat3 .u{font-size:10px;font-weight:700;color:var(--dim)}
+#stat3 .btm{display:flex;align-items:flex-end;gap:4px;margin-top:9px}
+#stat3 .btm>div{flex:1;min-width:0}
+#stat3 .w{font-size:12px;font-weight:600;min-height:15px}
+#stat3 .rng{font-size:11px;color:var(--dim);margin-top:7px;white-space:nowrap}
+.ring{width:38px;height:38px;flex:none}
+.ring circle{fill:none;stroke-width:4.5}
+.ring .bg{stroke:var(--line)}
+.ring .fg{stroke:var(--line);stroke-linecap:round}
+
+/* motion permission card */
+#motion-card{margin-top:14px}
+#motion-card[hidden]{display:none}
+#btn-motion{margin-top:12px;width:100%;padding:14px 0;border-radius:14px;background:var(--grad);color:#fff;font-weight:700}
+#motion-denied{margin-top:10px;color:var(--accent)}
+#motion-denied[hidden]{display:none}
+#btn-history .sub{font-weight:500}
 #pods-slot{height:210px;margin:16px 0;border-radius:18px;position:relative;overflow:hidden;
   background:radial-gradient(120% 90% at 50% 10%,#2a1207 0%,#17171a 60%);display:flex;align-items:center;justify-content:center}
 #pods-slot canvas{position:absolute;inset:0;width:100%;height:100%}
@@ -55,7 +101,6 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
 .seg{display:flex;background:var(--card);border-radius:14px;padding:4px;gap:4px}
 .seg button{flex:1;padding:10px 0;border-radius:10px;font-weight:700;color:var(--dim);font-size:13px}
 .seg button.on{background:var(--card2);color:var(--text);box-shadow:inset 0 0 0 1px var(--line)}
-#conn-pill{display:flex;align-items:center;gap:10px;margin:14px 0;padding:13px 16px}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--good);flex:none}
 .dot.off{background:var(--dim)}
 #btn-start{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:18px 0;margin-top:6px;
@@ -183,11 +228,122 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
 
 <!-- ================= HOME ================= -->
 <section class="screen on" id="scr-home">
-  <div id="brand">FORM<em>/</em>COACH</div>
+  <!-- header: wordmark + the real connection state (painted by the 1 Hz loop) -->
+  <div id="home-top">
+    <div id="brand">FORM<em>/</em>COACH</div>
+    <span class="spacer"></span>
+    <div id="conn">
+      <span class="dot off" id="conn-dot"></span>
+      <div id="conn-txt">
+        <div id="conn-name">Phone</div>
+        <div id="conn-state">Ready</div>
+      </div>
+      <svg class="ic" viewBox="0 0 24 24">
+        <path d="M7 4a3 3 0 0 1 3 3v2a3 3 0 0 1-3 3h-.5V19a1.5 1.5 0 0 1-3 0v-9A3 3 0 0 1 7 4Z"/>
+        <path d="M17 4a3 3 0 0 0-3 3v2a3 3 0 0 0 3 3h.5V19a1.5 1.5 0 0 0 3 0v-9A3 3 0 0 0 17 4Z"/>
+      </svg>
+    </div>
+  </div>
   <div id="home-hero">
     <div class="eyebrow orange" style="margin-top:22px">Running coach</div>
     <h1>Run better.<br><span class="alt">Every run.</span></h1>
     <p>Real-time feedback to improve your form and prevent injury.</p>
+  </div>
+  <!-- motion permission, asked for BEFORE the run: hidden inside the native
+       shell (CoreMotion needs no web prompt) and once we know it is granted -->
+  <div class="card" id="motion-card" hidden>
+    <div class="eyebrow">Sensor</div>
+    <div class="lbl" style="margin-top:4px;font-weight:700">Allow motion access</div>
+    <div class="sub" style="margin-top:4px">Form Coach reads your phone's motion sensor to measure your stride.</div>
+    <button id="btn-motion">Enable motion</button>
+    <div class="sub" id="motion-denied" hidden>Denied — enable Motion &amp; Orientation Access in Settings &gt; Apps &gt; Safari</div>
+  </div>
+  <div class="card" id="goal-pill" hidden>
+    <span class="dot"></span>
+    <span style="font-weight:600">Goal armed</span>
+    <span class="spacer"></span>
+    <span class="eyebrow orange" id="goal-pill-val"></span>
+  </div>
+  <!-- TODAY'S FORM — every figure comes from the newest REAL run (never the
+       seeded sample); dashes and an empty chart when there is none -->
+  <div class="card" id="form-card">
+    <div class="eyebrow" id="form-eyebrow">Today's form</div>
+    <div id="form-body">
+      <div id="form-score-col">
+        <div><span class="num" id="form-score">--</span><span id="form-of">/100</span></div>
+        <div id="form-word"></div>
+      </div>
+      <div id="form-chart">
+        <div id="form-plot">
+          <canvas id="form-spark"></canvas>
+          <div id="form-axis"><span id="fa-l"></span><span id="fa-m"></span><span id="fa-r"></span></div>
+        </div>
+        <div id="form-scale"><span>100</span><span>75</span><span>50</span><span>25</span></div>
+      </div>
+    </div>
+    <div class="sub" id="form-caption" hidden>No runs yet — tap Start Run</div>
+  </div>
+  <div class="card" id="stat3">
+    <div class="col">
+      <div class="eyebrow">Cadence</div>
+      <div class="v"><span class="num" id="st-cad">--</span><span class="u">spm</span></div>
+      <div class="btm">
+        <div>
+          <div class="w" id="st-cad-w"></div>
+          <div class="rng">170–180</div>
+        </div>
+        <svg class="ring" viewBox="0 0 44 44">
+          <circle class="bg" cx="22" cy="22" r="18"/>
+          <circle class="fg" id="ring-cad" cx="22" cy="22" r="18" transform="rotate(-90 22 22)" stroke-dasharray="0 113.1"/>
+        </svg>
+      </div>
+    </div>
+    <div class="col">
+      <div class="eyebrow">Impact load</div>
+      <div class="v"><span class="num" id="st-imp">--</span><span class="u">G</span></div>
+      <div class="btm">
+        <div>
+          <div class="w" id="st-imp-w"></div>
+          <div class="rng">1.0 – 2.5</div>
+        </div>
+        <svg class="ring" viewBox="0 0 44 44">
+          <circle class="bg" cx="22" cy="22" r="18"/>
+          <circle class="fg" id="ring-imp" cx="22" cy="22" r="18" transform="rotate(-90 22 22)" stroke-dasharray="0 113.1"/>
+        </svg>
+      </div>
+    </div>
+    <div class="col">
+      <div class="eyebrow">Gait balance</div>
+      <div class="v"><span class="num" id="st-bal">--</span><span class="u">L:R</span></div>
+      <div class="btm">
+        <div>
+          <div class="w" id="st-bal-w"></div>
+          <div class="rng">±5% Ideal</div>
+        </div>
+        <svg class="ring" viewBox="0 0 44 44">
+          <circle class="bg" cx="22" cy="22" r="18"/>
+          <circle class="fg" id="ring-bal" cx="22" cy="22" r="18" transform="rotate(-90 22 22)" stroke-dasharray="0 113.1"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <button id="btn-start">
+    <svg class="ic" viewBox="0 0 24 24" style="stroke:none;fill:#fff"><path d="M8 5.5v13l11-6.5z"/></svg>
+    Start Run
+  </button>
+  <button id="btn-history">
+    <div style="flex:1;text-align:left">
+      Activity History
+      <div class="sub">View your recent runs and progress</div>
+    </div>
+    <svg class="ic" viewBox="0 0 24 24" style="color:var(--dim)"><path d="m9 6 6 6-6 6"/></svg>
+  </button>
+  <!-- full-bleed: card matches the AI render's near-black so the image edge
+       vanishes; the slot bleeds through the card padding -->
+  <div class="card" id="formmap-card" style="margin-top:14px;background:#0a0a0c;overflow:hidden">
+    <div class="eyebrow">Form map</div>
+    <div id="formmap-slot" style="height:300px;margin:8px -16px 0"></div>
+    <div class="sub" style="text-align:center">Where your last run worked hardest</div>
   </div>
   <div id="pods-slot">
     <div id="pods-ph">
@@ -197,25 +353,6 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
       </svg>
       <span>FORM/COACH</span>
     </div>
-  </div>
-  <!-- full-bleed: card matches the AI render's near-black so the image edge
-       vanishes; the slot bleeds through the card padding -->
-  <div class="card" id="formmap-card" style="margin-top:14px;background:#0a0a0c;overflow:hidden">
-    <div class="eyebrow">Form map</div>
-    <div id="formmap-slot" style="height:300px;margin:8px -16px 0"></div>
-    <div class="sub" style="text-align:center">Where your last run worked hardest</div>
-  </div>
-  <div class="card" id="conn-pill">
-    <span class="dot off" id="conn-dot"></span>
-    <span id="conn-text" style="font-weight:600">Phone ready</span>
-    <span class="spacer"></span>
-    <span class="eyebrow" id="conn-mode">Hand mode</span>
-  </div>
-  <div class="card" id="goal-pill" hidden>
-    <span class="dot"></span>
-    <span style="font-weight:600">Goal armed</span>
-    <span class="spacer"></span>
-    <span class="eyebrow orange" id="goal-pill-val"></span>
   </div>
   <!-- PWA install prompt: hidden until beforeinstallprompt fires (Chrome/Android)
        or we detect iOS Safari, which never fires it and needs the Share sheet -->
@@ -241,15 +378,6 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;str
     </div>
     <div class="sub" id="lm-cue" style="margin-top:6px"></div>
   </div>
-  <button id="btn-start">
-    <svg class="ic" viewBox="0 0 24 24" style="stroke:none;fill:#fff"><path d="M8 5.5v13l11-6.5z"/></svg>
-    Start Run
-  </button>
-  <button id="btn-history">
-    Activity History
-    <span class="spacer"></span>
-    <svg class="ic" viewBox="0 0 24 24" style="color:var(--dim)"><path d="m9 6 6 6-6 6"/></svg>
-  </button>
 </section>
 
 <!-- ================= LIVE ================= -->
@@ -717,6 +845,7 @@ if (syncMod) {
     try { if ($('scr-insights')?.offsetParent !== null) paintInsights(); } catch {}
     try { paintHistoryScreen(); } catch {}
     try { paintFormMap(); } catch {}
+    try { paintHome(); } catch {}
   };
   const said = (n) => {
     $('sync-status').textContent = n < 0
@@ -833,9 +962,9 @@ async function startPhone() {
 }
 // Boot attempt: on desktop/Android this attaches immediately; on iOS the
 // permission call outside a gesture simply fails (no prompt is burned) and the
-// in-gesture retries below — Start Run, the Calibration row, the allow button —
-// are what actually grant it.
-startPhone();
+// in-gesture retries below — Start Run, the Calibration row, the Enable motion
+// button — are what actually grant it.
+startPhone().then(() => { try { paintMotionCard(); } catch {} });
 
 /* ---------- screens ---------- */
 const SCREENS = ['home', 'live', 'insights', 'coach', 'profile', 'calib', 'history'];
@@ -846,6 +975,7 @@ function show(name) {
   // canvases sized to 0 while display:none — size AFTER the screen is visible
   if (name === 'live') sizeCanvases();
   if (name === 'insights') paintInsights();
+  if (name === 'home') paintHome(); // re-sizes + repaints the score sparkline
 }
 for (const b of document.querySelectorAll('#tabbar button')) b.onclick = () => {
   show(b.dataset.s);
@@ -912,7 +1042,6 @@ function paintModeSeg() {
     ? (inNativeShell ? 'AirPods in ears — head stability on'
       : 'AirPods head tracking needs the iOS app — the web uses phone-in-hand')
     : 'Phone in hand';
-  $('conn-mode').textContent = ears ? 'Ears mode' : 'Hand mode';
   $('stream-lbl').textContent = ears ? 'AirPods stream' : 'Phone motion';
   // the "needs the iOS app" caveat is about ears mode — showing it in phone
   // mode would be AirPods copy on a screen the user is not in AirPods mode on
@@ -1041,6 +1170,214 @@ async function paintFormMap() {
 }
 paintFormMap();
 
+/* ---------- Home connection status (header) ---------- */
+// Two lines + a dot, and it says only what is true: AirPods exist as a sensor
+// ONLY inside the native shell, so the web build never claims them.
+function paintConn() {
+  try {
+    const headLive = inNativeShell && !!head?.isStreaming?.();
+    const phoneLive = !!phone?.isStreaming?.();
+    $('conn-name').textContent = headLive ? 'AirPods' : 'Phone';
+    $('conn-state').textContent = headLive ? 'Connected' : phoneLive ? 'Motion live' : 'Ready';
+    $('conn-dot').classList.toggle('off', !(headLive || phoneLive));
+  } catch { /* the header must never take the app down */ }
+}
+
+/* ---------- motion permission, asked for up front ---------- */
+// iOS only prompts inside a user gesture, so a runner who never taps Start has
+// no idea whether the sensor is allowed — and a previous denial is invisible.
+// This card asks first, and disappears the moment we know motion is granted.
+let permGranted = false; // navigator.permissions says 'granted' (Chromium)
+try {
+  navigator.permissions?.query?.({ name: 'accelerometer' })
+    ?.then?.((st) => {
+      const upd = () => { permGranted = st.state === 'granted'; paintMotionCard(); };
+      upd();
+      st.onchange = upd;
+    })
+    ?.catch?.(() => { /* Safari/Firefox reject the name — fall back below */ });
+} catch { /* no Permissions API at all */ }
+function motionKnownGranted() {
+  if (inNativeShell) return true;          // CoreMotion, no web prompt involved
+  if (motionAllowed === true) return true; // startPhone() returned true this session
+  if (permGranted) return true;
+  try { if (phone?.isStreaming?.()) return true; } catch {}
+  return false;
+}
+// the boot attempt fails on iOS purely for want of a gesture, so only a tap on
+// the button below is allowed to call it a denial
+let motionAsked = false;
+function paintMotionCard() {
+  const c = $('motion-card');
+  if (!c) return;
+  c.hidden = motionKnownGranted();
+  $('motion-denied').hidden = !(motionAsked && motionAllowed === false);
+}
+$('btn-motion').onclick = () => {
+  // NO await before this call: DeviceMotionEvent.requestPermission() must run
+  // synchronously inside the tap or iOS drops the gesture and never prompts.
+  startPhone().then((ok) => {
+    motionAsked = true;
+    paintMotionCard();
+  });
+};
+
+/* ---------- Home dashboard: the newest REAL run, or nothing ---------- */
+// HONESTY: the seeded 'demo' run is excluded here. With no real run every
+// number is '--', no qualitative word is shown, the rings are empty, the chart
+// is blank and the card says so. Nothing on this screen is synthesized.
+const RING_R = 18, RING_C = 2 * Math.PI * RING_R;
+const C_GOOD = '#3ddc84', C_WARN = '#ffb020', C_BAD = '#ff5b14';
+const numOr = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
+function newestRealRun() {
+  try {
+    const runs = sessionMod?.loadRuns?.(user) || [];
+    const real = runs.filter((r) => r && r.id !== 'demo');
+    real.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+    return real[0] || null;
+  } catch { return null; }
+}
+function meanOf(tl, key) {
+  let s = 0, n = 0;
+  for (const p of tl || []) { const v = numOr(p?.[key]); if (v != null) { s += v; n++; } }
+  return n ? s / n : null;
+}
+function setRing(el, frac, color) {
+  if (!el) return;
+  const f = frac == null ? 0 : Math.max(0, Math.min(1, frac));
+  el.setAttribute('stroke-dasharray', `${(f * RING_C).toFixed(1)} ${RING_C.toFixed(1)}`);
+  el.style.stroke = frac == null ? 'var(--line)' : color;
+}
+function setWord(el, text, cls) {
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = 'w' + (cls ? ' ' + cls : '');
+}
+// score sparkline over the last run's timeline — canvas sized AT CALL TIME
+// (a canvas measured while its screen is display:none comes back 0 wide)
+function paintFormSpark(scores) {
+  const c = $('form-spark');
+  if (!c) return;
+  const r = c.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  const d = devicePixelRatio || 1;
+  c.width = Math.round(r.width * d);
+  c.height = Math.round(r.height * d);
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+  if (!scores || scores.length < 2) return; // empty state: an empty chart
+  // bucket-average down to at most 12 points so the dots read like a summary
+  const MAXP = 12;
+  const pts = [];
+  if (scores.length <= MAXP) pts.push(...scores);
+  else {
+    for (let i = 0; i < MAXP; i++) {
+      const a = Math.floor((i * scores.length) / MAXP);
+      const b = Math.max(a + 1, Math.floor(((i + 1) * scores.length) / MAXP));
+      let s = 0;
+      for (let j = a; j < b; j++) s += scores[j];
+      pts.push(s / (b - a));
+    }
+  }
+  const padY = 8 * d, padL = 2 * d, padR = 4 * d;
+  const w = c.width - padL - padR, h = c.height - padY * 2;
+  const X = (i) => padL + (i / (pts.length - 1)) * w;
+  const Y = (v) => padY + (1 - Math.max(0, Math.min(100, v)) / 100) * h;
+  const grad = ctx.createLinearGradient(0, 0, 0, c.height);
+  grad.addColorStop(0, 'rgba(255,91,20,.42)');
+  grad.addColorStop(1, 'rgba(255,91,20,0)');
+  ctx.beginPath();
+  ctx.moveTo(X(0), c.height);
+  for (let i = 0; i < pts.length; i++) ctx.lineTo(X(i), Y(pts[i]));
+  ctx.lineTo(X(pts.length - 1), c.height);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.beginPath();
+  for (let i = 0; i < pts.length; i++) (i ? ctx.lineTo(X(i), Y(pts[i])) : ctx.moveTo(X(i), Y(pts[i])));
+  ctx.strokeStyle = C_BAD;
+  ctx.lineWidth = 2 * d;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+  ctx.fillStyle = C_BAD;
+  for (let i = 0; i < pts.length; i++) {
+    ctx.beginPath();
+    ctx.arc(X(i), Y(pts[i]), 3 * d, 0, 7);
+    ctx.fill();
+  }
+}
+function paintHome() {
+  try {
+    const run = newestRealRun();
+    const tl = run?.timeline || [];
+
+    // --- card title: "Today's form" only when the run really is from today ---
+    const d = run && run.startedAt ? new Date(run.startedAt) : null;
+    const today = d && isFinite(d.getTime()) && d.toDateString() === new Date().toDateString();
+    $('form-eyebrow').textContent = !run ? "Today's form"
+      : today ? "Today's form"
+        : 'Last run' + (d && isFinite(d.getTime())
+          ? ' · ' + d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+          : '');
+
+    // --- score ---
+    const meanScore = meanOf(tl, 'score');
+    const score = run ? (numOr(run.score) ?? (meanScore == null ? null : Math.round(meanScore))) : null;
+    $('form-score').textContent = score == null ? '--' : String(Math.round(score));
+    const sw = $('form-word');
+    if (score == null) setWord(sw, '', null);
+    else if (score >= 85) setWord(sw, 'Great form', 'ok');
+    else if (score >= 65) setWord(sw, 'Good form', 'warn');
+    else setWord(sw, 'Needs work', 'bad');
+    $('form-caption').hidden = !!run;
+
+    // --- sparkline + its axis ---
+    const scores = [];
+    for (const p of tl) { const v = numOr(p?.score); if (v != null) scores.push(v); }
+    paintFormSpark(scores);
+    const durS = run ? (numOr(run.duration) ?? numOr(tl[tl.length - 1]?.t) ?? 0) : 0;
+    const ago = (s) => (s >= 90 ? `-${Math.round(s / 60)}m` : `-${Math.round(s)}s`);
+    const haveChart = scores.length >= 2 && durS > 0;
+    $('fa-l').textContent = haveChart ? ago(durS) : '';
+    $('fa-m').textContent = haveChart ? ago(durS / 2) : '';
+    $('fa-r').textContent = haveChart ? (today ? 'Now' : 'End') : '';
+
+    // --- cadence (spm) ---
+    const cad = run ? (numOr(run.avg?.cadence) ?? meanOf(tl, 'cadence')) : null;
+    $('st-cad').textContent = cad == null ? '--' : String(Math.round(cad));
+    if (cad == null) { setWord($('st-cad-w'), '', null); setRing($('ring-cad'), null); }
+    else if (cad >= 170) { setWord($('st-cad-w'), 'Good', 'ok'); setRing($('ring-cad'), (cad - 140) / 40, C_GOOD); }
+    else if (cad >= 160) { setWord($('st-cad-w'), 'Moderate', 'warn'); setRing($('ring-cad'), (cad - 140) / 40, C_WARN); }
+    else { setWord($('st-cad-w'), 'Low', 'bad'); setRing($('ring-cad'), (cad - 140) / 40, C_BAD); }
+
+    // --- impact load (g) ---
+    const imp = run ? (numOr(run.avg?.impact) ?? meanOf(tl, 'impact')) : null;
+    $('st-imp').textContent = imp == null ? '--' : imp.toFixed(1);
+    if (imp == null) { setWord($('st-imp-w'), '', null); setRing($('ring-imp'), null); }
+    else if (imp <= 2.5) { setWord($('st-imp-w'), 'Good', 'ok'); setRing($('ring-imp'), imp / 4, C_GOOD); }
+    else if (imp <= 3.5) { setWord($('st-imp-w'), 'Moderate', 'warn'); setRing($('ring-imp'), imp / 4, C_WARN); }
+    else { setWord($('st-imp-w'), 'High', 'bad'); setRing($('ring-imp'), imp / 4, C_BAD); }
+
+    // --- gait balance (L:R) — the left/right labelling is an uncalibrated
+    // heuristic (see the limitations register), the split itself is measured ---
+    const balL = run ? meanOf(tl, 'balL') : null;
+    if (balL == null) {
+      $('st-bal').textContent = '--';
+      setWord($('st-bal-w'), '', null);
+      setRing($('ring-bal'), null);
+    } else {
+      const l = Math.round(balL);
+      $('st-bal').textContent = `${l}:${100 - l}`;
+      const bias = Math.abs(l - 50);
+      const q = 1 - Math.min(1, bias / 10);
+      if (bias <= 5) { setWord($('st-bal-w'), 'Good', 'ok'); setRing($('ring-bal'), q, C_GOOD); }
+      else if (bias <= 10) { setWord($('st-bal-w'), 'Moderate', 'warn'); setRing($('ring-bal'), q, C_WARN); }
+      else { setWord($('st-bal-w'), 'Uneven', 'bad'); setRing($('ring-bal'), q, C_BAD); }
+    }
+  } catch { /* the dashboard must never take the app down */ }
+}
+paintHome();
+
 /* ---------- goal run form (Coach tab) — strictly optional, per-runner ---------- */
 // unset (--/--) by default; armed only when the user deliberately sets BOTH
 // distance and time; consumed by the next run, then cleared.
@@ -1158,8 +1495,9 @@ function sizeCanvas(c) {
 }
 function sizeCanvases() { sizeCanvas($('wave')); sizeCanvas($('spark')); }
 window.addEventListener('resize', () => {
-  // only meaningful while the live screen is laid out (display:none → 0 sizes)
+  // only meaningful while the screen is laid out (display:none → 0 sizes)
   if ($('scr-live').classList.contains('on')) sizeCanvases();
+  if ($('scr-home').classList.contains('on')) paintHome();
 });
 
 function paintWave(samples) {
@@ -1339,6 +1677,7 @@ $('btn-stop').onclick = () => {
   sayPersona(persona?.runEndLine?.(lastRun.score, cueLog.length));
   show('insights');
   paintFormMap(); // the Home form map now reflects this run
+  paintHome();    // …and so do the Home score/cadence/impact/balance figures
 };
 
 // fixture recording: ONE path for both modes — drain the active sensor buffer
@@ -1687,13 +2026,13 @@ setInterval(calibTick, 100); // ~10 Hz; setInterval, never rAF (throttled webvie
 
 /* ---------- the app loop: ONE 1 Hz interval (never rAF — throttled webviews) ---------- */
 setInterval(() => {
-  // idle: connection pill + stream status, honest per mode
+  // idle: Home connection status + Profile stream status, honest per sensor.
+  // AirPods only ever stream inside the native shell, so that is the only place
+  // the header may claim them.
   const ears = mode === 'ears';
   const streaming = sensorStreaming();
-  $('conn-dot').classList.toggle('off', !streaming);
-  $('conn-text').textContent = streaming
-    ? (ears ? 'AirPods streaming' : 'Phone motion live')
-    : (ears ? 'Waiting for AirPods…' : 'Phone ready');
+  paintConn();
+  paintMotionCard();
   $('stream-dot').classList.toggle('off', !streaming);
   $('stream-note').textContent = streaming
     ? (ears ? 'Receiving head motion' : 'Receiving phone motion')
