@@ -1092,7 +1092,7 @@ function calibTick() {
     if (a3 && typeof newest.qw === 'number') {
       pitch = a3.pitch; roll = a3.roll;
     } else {
-      pitch = Math.atan2(-newest.gx, Math.hypot(newest.gy, newest.gz)) * 180 / Math.PI;
+      pitch = Math.atan2(newest.gx, Math.hypot(newest.gy, newest.gz)) * 180 / Math.PI; // sign per real-head test
       roll = Math.atan2(newest.gy, newest.gz) * 180 / Math.PI;
       if (calRef === null) calRef = { pitch, roll }; // set-level zero for the gravity path
       pitch -= calRef.pitch; roll -= calRef.roll;

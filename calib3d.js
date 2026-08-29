@@ -72,13 +72,13 @@ export function mountCalib3D(el, getSample) {
     const s = getSample?.();
     if (s) {
       if (typeof s.qw === 'number') {
-        // CoreMotion is z-up, three.js y-up: (x,y,z,w) -> (x, z, -y, w)
-        // ponytail: axis convention verified against synthetic data, not yet on
-        // a head — flip signs here if the real pods rotate mirrored
-        target.set(s.qx, s.qz, -s.qy, s.qw);
+        // CoreMotion is z-up, three.js y-up. Pitch (x) sign flipped after a
+        // real-head test: nod-down previously rendered as nod-up.
+        target.set(-s.qx, s.qz, -s.qy, s.qw);
       } else if (typeof s.gx === 'number') {
-        // gravity-only fallback: pitch/roll, no yaw
-        gUp.set(s.gx, s.gz, -s.gy).normalize().negate();
+        // gravity-only fallback: pitch/roll, no yaw (pitch sign matches the
+        // quaternion path's real-head fix)
+        gUp.set(-s.gx, s.gz, -s.gy).normalize().negate();
         target.setFromUnitVectors(devUp, gUp);
       }
       q.slerp(target, 0.35); // light smoothing, still snappy
