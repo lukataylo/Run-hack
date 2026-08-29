@@ -1,0 +1,3 @@
+three.js r160 (three.module.js, GLTFLoader, RoomEnvironment, BufferGeometryUtils)
+Source: https://cdn.jsdelivr.net/npm/three@0.160.0/ — MIT License, Copyright 2010-2023 Three.js Authors.
+Import specifiers rewritten to relative paths for no-build-step vendoring.

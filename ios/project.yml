@@ -1,0 +1,39 @@
+name: AirRunCoach
+options:
+  bundleIdPrefix: com.lukadadiani
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  AirRunCoach:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      # bundle the whole web app as an offline cold-start fallback
+      - { path: ../index.html, buildPhase: resources }
+      - { path: ../coach.js, buildPhase: resources }
+      - { path: ../head.js, buildPhase: resources }
+      - { path: ../replay.js, buildPhase: resources, optional: true }
+      - { path: ../voice.js, buildPhase: resources, optional: true }
+      - { path: ../bot.js, buildPhase: resources, optional: true }
+      - { path: ../bot-data.js, buildPhase: resources, optional: true }
+      - { path: ../music.js, buildPhase: resources, optional: true }
+      - { path: ../session.js, buildPhase: resources, optional: true }
+      - { path: ../pods3d.js, buildPhase: resources, optional: true }
+      - { path: ../vendor, buildPhase: resources, type: folder, optional: true }
+      - { path: ../audio, buildPhase: resources, type: folder, optional: true }
+      - { path: ../assets, buildPhase: resources, type: folder, optional: true }
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.lukadadiani.airruncoach
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.9"
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: air-run-coach
+        NSMotionUsageDescription: air-run-coach reads headphone motion to analyse your running form in real time.
+        UIBackgroundModes: [audio]
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UILaunchScreen: {}
+        UIViewControllerBasedStatusBarAppearance: false

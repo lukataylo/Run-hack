@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>FORM/COACH</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23ff5b14'/%3E%3Cpath d='M20 44V20h24M20 32h16' stroke='%23fff' stroke-width='6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#09090b; --card:#17171a; --card2:#1e1e22; --text:#f4f4f5; --dim:#8e8e96;
+  --accent:#ff5b14; --accent2:#ff8a3d; --good:#3ddc84; --amber:#ffb020; --line:#26262b;
+  --grad:linear-gradient(135deg,#ff5b14,#ff8a3d);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  overscroll-behavior:none;-webkit-user-select:none;user-select:none}
+#app{max-width:480px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column}
+.screen{display:none;flex:1;flex-direction:column;padding:calc(14px + env(safe-area-inset-top)) 18px 96px}
+.screen.on{display:flex}
+.eyebrow{font-size:10px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+.eyebrow.orange{color:var(--accent)}
+.num{font-variant-numeric:tabular-nums;letter-spacing:-.03em;font-weight:800}
+.card{background:var(--card);border-radius:18px;padding:16px}
+.row{display:flex;gap:12px}
+.row>.card{flex:1;min-width:0}
+.spacer{flex:1}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;display:block}
+
+/* ---------- tab bar ---------- */
+#tabbar{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:100%;max-width:480px;
+  display:flex;background:rgba(12,12,14,.94);backdrop-filter:blur(14px);border-top:1px solid var(--line);
+  padding:8px 8px calc(10px + env(safe-area-inset-bottom));z-index:20}
+#tabbar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--dim);font-size:10px;font-weight:600}
+#tabbar button.on{color:var(--accent)}
+#tabbar.hidden{display:none}
+
+/* ---------- home ---------- */
+#brand{font-size:22px;font-weight:800;letter-spacing:.02em}
+#brand em{font-style:normal;color:var(--accent)}
+#home-hero h1{font-size:44px;line-height:1.02;letter-spacing:-.035em;font-weight:800;margin:8px 0 10px}
+#home-hero h1 .alt{color:var(--accent)}
+#home-hero p{color:var(--dim);max-width:280px}
+#pods-slot{height:210px;margin:16px 0;border-radius:18px;position:relative;overflow:hidden;
+  background:radial-gradient(120% 90% at 50% 10%,#2a1207 0%,#17171a 60%);display:flex;align-items:center;justify-content:center}
+#pods-slot canvas{position:absolute;inset:0;width:100%;height:100%}
+#pods-ph{color:#5c5c64;display:flex;flex-direction:column;align-items:center;gap:8px;font-size:11px;letter-spacing:.14em;text-transform:uppercase}
+.seg{display:flex;background:var(--card);border-radius:14px;padding:4px;gap:4px}
+.seg button{flex:1;padding:10px 0;border-radius:10px;font-weight:700;color:var(--dim);font-size:13px}
+.seg button.on{background:var(--card2);color:var(--text);box-shadow:inset 0 0 0 1px var(--line)}
+#conn-pill{display:flex;align-items:center;gap:10px;margin:14px 0;padding:13px 16px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--good);flex:none}
+.dot.off{background:var(--dim)}
+#btn-start{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:18px 0;margin-top:6px;
+  border-radius:16px;background:var(--grad);color:#fff;font-size:18px;font-weight:800;letter-spacing:-.01em;
+  box-shadow:0 8px 28px rgba(255,91,20,.35)}
+#btn-history{display:flex;align-items:center;width:100%;padding:16px;margin-top:12px;border-radius:16px;background:var(--card);font-weight:700}
+
+/* ---------- live ---------- */
+#live-top{display:flex;align-items:center;margin-bottom:6px}
+#live-badge{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:.14em}
+#live-badge .dot{animation:pulse 1.6s infinite}
+@keyframes pulse{50%{opacity:.35}}
+#live-title{position:absolute;left:0;right:0;text-align:center;pointer-events:none}
+#live-title .t{font-size:13px;color:var(--text);font-weight:600}
+#timer{font-size:15px}
+#gps-ind{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:11px;color:var(--dim);font-weight:700;z-index:1}
+#dial-wrap{position:relative;margin:4px auto 0;width:min(78vw,300px)}
+#dial-wrap svg{width:100%;display:block}
+#dial-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+#cadence-val{font-size:72px;line-height:1}
+#dial-center .unit{font-size:13px;font-weight:700;letter-spacing:.2em;color:var(--dim);margin-top:2px}
+#dial-center .target{font-size:12px;color:var(--accent2);margin-top:8px;font-weight:600}
+#wave{width:100%;height:64px;display:block;margin:2px 0 12px}
+.big{font-size:40px;line-height:1.05}
+.sub{font-size:12px;color:var(--dim);margin-top:2px}
+.ok{color:var(--good)}.warn{color:var(--amber)}.bad{color:var(--accent)}
+#spark{width:100%;height:44px;display:block;margin-top:8px}
+#donut-card{display:flex;align-items:center;gap:8px;margin-top:12px}
+.bal-col{flex:1;text-align:center}
+.bal-col .pct{font-size:30px}
+.bal-col .pct small{font-size:14px;color:var(--dim);font-weight:700}
+#bias-note{text-align:center;font-size:11px;color:var(--dim);margin-top:6px}
+#mascot-card{margin-top:12px;display:flex;align-items:center;gap:14px;min-height:96px}
+.bot-slot{width:76px;height:76px;flex:none;border-radius:50%;background:var(--card2);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.bot-slot svg{width:100%;height:100%}
+.bot-ph{width:34px;height:34px;border-radius:50%;background:var(--grad);opacity:.5}
+#cue-line{flex:1;font-size:16px;font-weight:700;color:var(--dim)}
+#cue-line.flash{color:var(--text);animation:cueflash .5s 3}
+@keyframes cueflash{50%{color:var(--accent)}}
+#live-ctl{display:flex;align-items:center;justify-content:center;gap:26px;margin:20px 0 4px}
+.ctl-sm{width:56px;height:56px;border-radius:50%;background:var(--card);display:flex;align-items:center;justify-content:center;color:var(--dim)}
+.ctl-sm.on{color:var(--accent)}
+#btn-stop{width:78px;height:78px;border-radius:50%;background:var(--grad);display:flex;align-items:center;justify-content:center;color:#fff;
+  box-shadow:0 8px 28px rgba(255,91,20,.4)}
+
+/* ---------- insights ---------- */
+.scr-head{display:flex;align-items:center;margin-bottom:14px;position:relative}
+.scr-head .title{position:absolute;left:0;right:0;text-align:center;font-weight:700;pointer-events:none}
+.scr-head button{color:var(--text);z-index:1}
+#hero-card{position:relative;overflow:hidden;background:var(--grad);border-radius:18px;padding:20px;color:#fff;min-height:130px}
+#hero-card.green{background:linear-gradient(135deg,#0f8a4c,#3ddc84)}
+#hero-card .rings{position:absolute;right:-40px;top:-40px;width:220px;height:220px;pointer-events:none;opacity:.5}
+#hero-eyebrow{font-size:10px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;opacity:.85}
+#hero-line{font-size:24px;font-weight:800;letter-spacing:-.02em;line-height:1.15;margin-top:8px;max-width:250px}
+#focus-row{margin-top:12px}
+.chart-slot{height:130px;margin-top:10px;border-radius:10px;background:var(--card2);
+  display:flex;align-items:center;justify-content:center;color:#5c5c64;font-size:11px;letter-spacing:.12em;text-transform:uppercase;overflow:hidden}
+.chart-slot canvas,.chart-slot svg{width:100%;height:100%}
+#summary-row{display:flex;margin-top:12px;padding:14px 8px}
+#summary-row>div{flex:1;text-align:center}
+#summary-row .v{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
+#summary-row .k{font-size:10px;color:var(--dim);letter-spacing:.14em;text-transform:uppercase;margin-top:3px}
+#history-list{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+.hist-row{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:14px;padding:14px 16px}
+.hist-row .chip{width:44px;height:44px;border-radius:12px;background:var(--card2);display:flex;align-items:center;justify-content:center;
+  font-weight:800;font-variant-numeric:tabular-nums;color:var(--good)}
+.placeholder{color:#5c5c64;font-size:12px;text-align:center;padding:18px 8px}
+
+/* ---------- coach ---------- */
+#coach-bot{width:150px;height:150px;margin:8px auto}
+.cue-card{display:flex;gap:14px;align-items:flex-start;margin-top:10px}
+.cue-card .tag{font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);
+  border:1px solid rgba(255,91,20,.4);border-radius:7px;padding:4px 8px;flex:none;margin-top:2px}
+.cue-card .txt{font-weight:600}
+#etiquette{margin-top:14px;color:var(--dim);font-size:13px;line-height:1.55}
+
+/* ---------- profile ---------- */
+.set-row{display:flex;align-items:center;gap:12px;padding:16px;margin-top:10px}
+.set-row .lbl{font-weight:700}
+.set-row .note{font-size:11px;color:var(--dim);margin-top:2px}
+.toggle{width:50px;height:30px;border-radius:15px;background:var(--card2);position:relative;flex:none;transition:background .2s}
+.toggle::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:var(--dim);transition:all .2s}
+.toggle.on{background:var(--accent)}
+.toggle.on::after{left:23px;background:#fff}
+.seg.mini{flex:none;width:190px}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ================= HOME ================= -->
+<section class="screen on" id="scr-home">
+  <div id="brand">FORM<em>/</em>COACH</div>
+  <div id="home-hero">
+    <div class="eyebrow orange" style="margin-top:22px">Running coach</div>
+    <h1>Run better.<br><span class="alt">Every run.</span></h1>
+    <p>Real-time feedback to improve your form and prevent injury.</p>
+  </div>
+  <div id="pods-slot">
+    <div id="pods-ph">
+      <svg class="ic" viewBox="0 0 24 24" style="width:34px;height:34px;color:#5c5c64">
+        <path d="M7 4a3 3 0 0 1 3 3v2a3 3 0 0 1-3 3h-.5V19a1.5 1.5 0 0 1-3 0v-9A3 3 0 0 1 7 4Z"/>
+        <path d="M17 4a3 3 0 0 0-3 3v2a3 3 0 0 0 3 3h.5V19a1.5 1.5 0 0 0 3 0v-9A3 3 0 0 0 17 4Z"/>
+      </svg>
+      <span>FORM/COACH</span>
+    </div>
+  </div>
+  <div class="eyebrow" style="margin-bottom:8px">Runner</div>
+  <div class="seg" id="user-seg">
+    <button data-u="1">Runner 1</button><button data-u="2">Runner 2</button><button data-u="3">Runner 3</button>
+  </div>
+  <div class="card" id="conn-pill">
+    <span class="dot off" id="conn-dot"></span>
+    <span id="conn-text" style="font-weight:600">Phone ready</span>
+    <span class="spacer"></span>
+    <span class="eyebrow" id="conn-mode">Hand mode</span>
+  </div>
+  <button id="btn-start">
+    <svg class="ic" viewBox="0 0 24 24" style="stroke:none;fill:#fff"><path d="M8 5.5v13l11-6.5z"/></svg>
+    Start Run
+  </button>
+  <button id="btn-history">
+    Activity History
+    <span class="spacer"></span>
+    <svg class="ic" viewBox="0 0 24 24" style="color:var(--dim)"><path d="m9 6 6 6-6 6"/></svg>
+  </button>
+</section>
+
+<!-- ================= LIVE ================= -->
+<section class="screen" id="scr-live">
+  <div id="live-top">
+    <span id="live-badge"><span class="dot"></span>LIVE</span>
+    <span id="live-title"><div class="t">Outdoor Run</div><div id="timer" class="num">00:00:00</div></span>
+    <span id="gps-ind"><svg class="ic" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M4 18v-4M9 18v-8M14 18V7M19 18V4"/></svg>GPS</span>
+  </div>
+
+  <div id="dial-wrap">
+    <svg viewBox="0 0 200 200" id="dial-svg">
+      <g id="dial-ticks"></g>
+      <path id="dial-track" fill="none" stroke="#26262b" stroke-width="5" stroke-linecap="round"/>
+      <path id="dial-arc" fill="none" stroke="url(#dialgrad)" stroke-width="5" stroke-linecap="round"/>
+      <defs><linearGradient id="dialgrad" x1="0" y1="1" x2="1" y2="0">
+        <stop offset="0" stop-color="#ff5b14"/><stop offset="1" stop-color="#ff8a3d"/>
+      </linearGradient></defs>
+    </svg>
+    <div id="dial-center">
+      <div class="eyebrow">Cadence</div>
+      <div id="cadence-val" class="num">--</div>
+      <div class="unit">SPM</div>
+      <div class="target">Target 170–180</div>
+    </div>
+  </div>
+
+  <canvas id="wave"></canvas>
+
+  <div class="row">
+    <div class="card">
+      <div class="eyebrow">Form score</div>
+      <div style="display:flex;align-items:baseline;gap:4px;margin-top:6px">
+        <span id="score-val" class="num big">--</span><span style="color:var(--dim);font-weight:700">/100</span>
+      </div>
+      <div class="sub" id="score-note">Warming up</div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">Distance</div>
+      <div style="display:flex;align-items:baseline;gap:4px;margin-top:6px">
+        <span id="dist-val" class="num big">0.00</span><span style="color:var(--dim);font-weight:700">km</span>
+      </div>
+      <div class="sub" id="pace-note">--:-- /km</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <div style="display:flex;align-items:baseline">
+      <span class="eyebrow">Impact load (G)</span>
+      <span class="spacer"></span>
+      <span id="impact-val" class="num" style="font-size:22px">--</span>
+    </div>
+    <canvas id="spark"></canvas>
+  </div>
+
+  <div class="card" id="donut-card">
+    <div class="bal-col"><div class="pct num" id="bal-l">--<small>%</small></div><div class="sub">Left</div></div>
+    <svg width="92" height="92" viewBox="0 0 92 92">
+      <circle cx="46" cy="46" r="38" fill="none" stroke="#26262b" stroke-width="9"/>
+      <circle id="donut-l" cx="46" cy="46" r="38" fill="none" stroke="url(#dialgrad)" stroke-width="9"
+        stroke-linecap="round" transform="rotate(-90 46 46)"/>
+    </svg>
+    <div class="bal-col"><div class="pct num" id="bal-r">--<small>%</small></div><div class="sub">Right</div></div>
+  </div>
+  <div id="bias-note">Gait balance</div>
+
+  <div class="card" id="mascot-card">
+    <div class="bot-slot" id="live-bot"><div class="bot-ph"></div></div>
+    <div id="cue-line">Listening to your stride…</div>
+  </div>
+
+  <div id="live-ctl">
+    <button class="ctl-sm" id="btn-rec" title="Record fixture">
+      <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/></svg>
+    </button>
+    <button id="btn-stop"><svg class="ic" viewBox="0 0 24 24" style="stroke:none;fill:#fff"><rect x="7" y="7" width="10" height="10" rx="2"/></svg></button>
+    <button class="ctl-sm on" id="btn-voice" title="Voice cues">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6l-5 4H4z"/><path d="M16.5 9.5a4 4 0 0 1 0 5"/></svg>
+    </button>
+  </div>
+</section>
+
+<!-- ================= INSIGHTS ================= -->
+<section class="screen" id="scr-insights">
+  <div class="scr-head">
+    <button id="btn-ins-back"><svg class="ic" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <span class="title">Run Analysis</span>
+  </div>
+  <!-- Track C's renderInsights fills this container when session.js is present -->
+  <div id="insights-body"></div>
+  <!-- fallback structure, shown only when session.js is absent -->
+  <div id="ins-fallback">
+  <div id="hero-card">
+    <svg class="rings" viewBox="0 0 200 200">
+      <circle cx="100" cy="100" r="45" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="1.5"/>
+      <circle cx="100" cy="100" r="70" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="1.5"/>
+      <circle cx="100" cy="100" r="95" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="1.5"/>
+    </svg>
+    <div id="hero-eyebrow">Form focus</div>
+    <div id="hero-line">Finish a run to see your analysis.</div>
+  </div>
+  <div class="row" id="focus-row">
+    <div class="card">
+      <div class="eyebrow">Suggested focus</div>
+      <div id="focus-val" style="font-weight:700;margin-top:6px">—</div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">Form score</div>
+      <div id="ins-score" class="num" style="font-size:28px;margin-top:4px">--</div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <div class="eyebrow">Impact load over time</div>
+    <div class="chart-slot" id="chart-impact">Impact chart</div>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <div class="eyebrow">Cadence</div>
+    <div class="chart-slot" id="chart-cadence">Cadence chart</div>
+  </div>
+  <div class="card" style="margin-top:12px" id="head-card">
+    <div class="eyebrow">Head stability</div>
+    <div class="chart-slot" id="chart-head">Ears-mode runs only</div>
+  </div>
+  <div class="card" id="summary-row">
+    <div><div class="v" id="sum-km">--</div><div class="k">km</div></div>
+    <div><div class="v" id="sum-dur">--</div><div class="k">time</div></div>
+    <div><div class="v" id="sum-cues">--</div><div class="k">cues</div></div>
+    <div><div class="v" id="sum-mode">--</div><div class="k">mode</div></div>
+  </div>
+  </div>
+  <div class="eyebrow" style="margin-top:18px">Activity history</div>
+  <div id="history-list"><div class="placeholder">Past runs appear here.</div></div>
+</section>
+
+<!-- ================= COACH ================= -->
+<section class="screen" id="scr-coach">
+  <div class="scr-head"><span class="title">Coach</span></div>
+  <div class="bot-slot" id="coach-bot" style="background:var(--card)"><div class="bot-ph" style="width:56px;height:56px"></div></div>
+  <div class="card cue-card"><span class="tag">Cadence</span><span class="txt">“Quicker feet. Shorten your stride.”</span></div>
+  <div class="card cue-card"><span class="tag">Bounce</span><span class="txt">“Too much bounce. Run softer, drive forward.”</span></div>
+  <div class="card cue-card"><span class="tag">Sway</span><span class="txt">“Your head is rocking. Eyes forward, run tall.”</span></div>
+  <div class="card cue-card"><span class="tag">Balance</span><span class="txt">“You're favouring one side. Even it out.”</span></div>
+  <p id="etiquette">Your coach speaks only when it matters: nothing for the first 20 seconds, a fault has to
+  persist for 12 seconds before it earns a cue, cues arrive at least 30 seconds apart, and the same correction
+  is never repeated within 90 seconds — a fix takes about 300 strides to land. One fault at a time, highest
+  priority first. Silence means your form is good.</p>
+</section>
+
+<!-- ================= PROFILE ================= -->
+<section class="screen" id="scr-profile">
+  <div class="scr-head"><span class="title">Profile</span></div>
+  <div class="eyebrow" style="margin-top:6px">Sensor</div>
+  <div class="card set-row">
+    <div style="flex:1"><div class="lbl">Sensor mode</div><div class="note" id="mode-note">Phone in hand</div></div>
+    <div class="seg mini" id="mode-seg"><button data-m="hand">Phone</button><button data-m="ears">AirPods</button></div>
+  </div>
+  <div class="card set-row">
+    <div style="flex:1"><div class="lbl">AirPods stream</div><div class="note" id="stream-note">Not streaming</div></div>
+    <span class="dot off" id="stream-dot"></span>
+  </div>
+  <div class="eyebrow" style="margin-top:18px">Coaching</div>
+  <div class="card set-row">
+    <div style="flex:1"><div class="lbl">Voice cues</div><div class="note">Spoken corrections during the run</div></div>
+    <button class="toggle on" id="tgl-voice"></button>
+  </div>
+  <div class="card set-row">
+    <div style="flex:1"><div class="lbl">Adaptive music</div><div class="note">Generative soundtrack driven by your form</div></div>
+    <button class="toggle" id="tgl-music"></button>
+  </div>
+  <div class="eyebrow" style="margin-top:18px">Data</div>
+  <div class="card set-row">
+    <div style="flex:1"><div class="lbl">Export last recording</div><div class="note" id="rec-note">No recording yet — use the record button on a run</div></div>
+    <button class="ctl-sm" id="btn-export" style="width:44px;height:44px">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M12 4v11m0 0 4-4m-4 4-4-4"/><path d="M5 19h14"/></svg>
+    </button>
+  </div>
+</section>
+
+<!-- ================= TAB BAR ================= -->
+<nav id="tabbar">
+  <button data-s="home" class="on"><svg class="ic" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7"/><path d="M6 10v9h12v-9"/></svg>Home</button>
+  <button data-s="insights"><svg class="ic" viewBox="0 0 24 24"><path d="M5 19v-6M10 19V9M15 19v-4M20 19V5"/></svg>Insights</button>
+  <button data-s="coach"><svg class="ic" viewBox="0 0 24 24"><path d="M4 10v4h3l4 4V6L7 10H4z"/><path d="M15 9a4.5 4.5 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11"/></svg>Coach</button>
+  <button data-s="profile"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>Profile</button>
+</nav>
+</div>
+
+<script type="module">
+import { analyze, Coach, verticalSeries, CONFIG } from './coach.js';
+
+const $ = (id) => document.getElementById(id);
+
+/* ---------- optional modules: a missing/broken module never takes the app down ---------- */
+const head = await import('./head.js').catch(() => null);
+const voice = await import('./voice.js').catch(() => null);
+const botMod = await import('./bot.js').catch(() => null);
+const musicMod = await import('./music.js').catch(() => null);
+const sessionMod = await import('./session.js').catch(() => null);
+import('./pods3d.js').then((m) => m.mount?.($('pods-slot'))).catch(() => {});
+
+/* ---------- mascots ---------- */
+function mountBot(el) {
+  if (!botMod?.mountBot) return null;
+  try { el.innerHTML = ''; return botMod.mountBot(el); } catch { return null; }
+}
+const liveBot = mountBot($('live-bot'));
+const coachBot = mountBot($('coach-bot'));
+const setBots = (s) => { try { liveBot?.setState(s); coachBot?.setState(s); } catch {} };
+
+/* ---------- state ---------- */
+let user = localStorage.getItem('user') || '1';
+let mode = localStorage.getItem('mode') || 'hand';
+let voiceOn = true, musicOn = false;
+let running = false, coach = null, session = null, music = null;
+let runT0 = 0, wakeLock = null;
+let cueLog = [], impacts = [], lastMetrics = null, lastRun = null;
+let recording = false, recBuf = [], lastRecording = null;
+
+/* ---------- hand-mode sample buffer ---------- */
+let handBuf = [];
+function onMotion(e) {
+  const a = e.acceleration, g = e.accelerationIncludingGravity;
+  if (!a || !g || g.x == null) return;
+  const s = { t: performance.now(), ax: a.x || 0, ay: a.y || 0, az: a.z || 0, gx: g.x, gy: g.y, gz: g.z };
+  handBuf.push(s);
+  if (recording && mode === 'hand') recBuf.push(s);
+}
+function sampleWindow(ms) {
+  if (mode === 'ears' && head) return head.getWindow(ms);
+  const cut = performance.now() - ms;
+  if (handBuf.length > 4000) handBuf = handBuf.filter((s) => s.t >= cut);
+  return handBuf.filter((s) => s.t >= cut);
+}
+
+/* ---------- screens ---------- */
+const SCREENS = ['home', 'live', 'insights', 'coach', 'profile'];
+function show(name) {
+  for (const s of SCREENS) $('scr-' + s).classList.toggle('on', s === name);
+  for (const b of document.querySelectorAll('#tabbar button')) b.classList.toggle('on', b.dataset.s === name);
+  $('tabbar').classList.toggle('hidden', name === 'live');
+  // canvases sized to 0 while display:none — size AFTER the screen is visible
+  if (name === 'live') sizeCanvases();
+  if (name === 'insights') paintInsights();
+}
+for (const b of document.querySelectorAll('#tabbar button')) b.onclick = () => show(b.dataset.s);
+$('btn-history').onclick = () => show('insights');
+$('btn-ins-back').onclick = () => show(running ? 'live' : 'home');
+
+/* ---------- home widgets ---------- */
+function paintUserSeg() {
+  for (const b of document.querySelectorAll('#user-seg button')) b.classList.toggle('on', b.dataset.u === user);
+}
+for (const b of document.querySelectorAll('#user-seg button'))
+  b.onclick = () => { user = b.dataset.u; localStorage.setItem('user', user); paintUserSeg(); paintInsights(); };
+paintUserSeg();
+
+function paintModeSeg() {
+  for (const b of document.querySelectorAll('#mode-seg button')) b.classList.toggle('on', b.dataset.m === mode);
+  $('mode-note').textContent = mode === 'ears' ? 'AirPods in ears — head stability on' : 'Phone in hand';
+  $('conn-mode').textContent = mode === 'ears' ? 'Ears mode' : 'Hand mode';
+}
+for (const b of document.querySelectorAll('#mode-seg button'))
+  b.onclick = () => { mode = b.dataset.m; localStorage.setItem('mode', mode); paintModeSeg(); };
+paintModeSeg();
+
+$('tgl-voice').onclick = () => { voiceOn = !voiceOn; $('tgl-voice').classList.toggle('on', voiceOn); $('btn-voice').classList.toggle('on', voiceOn); };
+$('btn-voice').onclick = () => $('tgl-voice').onclick();
+$('tgl-music').onclick = async () => {
+  musicOn = !musicOn;
+  $('tgl-music').classList.toggle('on', musicOn);
+  // music.start() must live inside a tap gesture (WebAudio unlock)
+  if (musicOn && musicMod?.create) {
+    try { music = music || musicMod.create({}); await music.start(); } catch { music = null; }
+  } else if (music) { try { music.stop(); } catch {} }
+};
+
+/* ---------- dial ---------- */
+const DIAL_R = 84, DIAL_C = 100, DIAL_SWEEP = 270, DIAL_START = 135; // degrees, gap at bottom
+function polar(deg, r) {
+  const a = (deg * Math.PI) / 180;
+  return [DIAL_C + r * Math.cos(a), DIAL_C + r * Math.sin(a)];
+}
+function arcPath(fromDeg, toDeg, r) {
+  const [x1, y1] = polar(fromDeg, r), [x2, y2] = polar(toDeg, r);
+  const large = toDeg - fromDeg > 180 ? 1 : 0;
+  return `M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}`;
+}
+$('dial-track').setAttribute('d', arcPath(DIAL_START, DIAL_START + DIAL_SWEEP, DIAL_R));
+{
+  let ticks = '';
+  for (let i = 0; i <= 44; i++) {
+    const deg = DIAL_START + (i / 44) * DIAL_SWEEP;
+    const [x1, y1] = polar(deg, DIAL_R + 8), [x2, y2] = polar(deg, DIAL_R + (i % 4 === 0 ? 15 : 12));
+    ticks += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${i % 4 === 0 ? '#3c3c42' : '#26262b'}" stroke-width="1.6"/>`;
+  }
+  $('dial-ticks').innerHTML = ticks;
+}
+function paintDial(cadence) {
+  const f = Math.min(1, Math.max(0.001, (cadence - 120) / (220 - 120)));
+  $('dial-arc').setAttribute('d', arcPath(DIAL_START, DIAL_START + f * DIAL_SWEEP, DIAL_R));
+  $('cadence-val').textContent = cadence ? Math.round(cadence) : '--';
+}
+
+/* ---------- canvases ---------- */
+function sizeCanvas(c) {
+  const r = c.getBoundingClientRect();
+  if (!r.width) return;
+  const d = devicePixelRatio || 1;
+  c.width = r.width * d; c.height = r.height * d;
+}
+function sizeCanvases() { sizeCanvas($('wave')); sizeCanvas($('spark')); }
+
+function paintWave(samples) {
+  const c = $('wave'), ctx = c.getContext('2d');
+  if (!c.width) return;
+  ctx.clearRect(0, 0, c.width, c.height);
+  if (samples.length < 8) return;
+  const { v } = verticalSeries(samples);
+  let max = 1;
+  for (const x of v) if (Math.abs(x) > max) max = Math.abs(x);
+  const grad = ctx.createLinearGradient(0, 0, c.width, 0);
+  grad.addColorStop(0, 'rgba(255,91,20,.15)'); grad.addColorStop(0.7, '#ff5b14'); grad.addColorStop(1, '#ff8a3d');
+  ctx.strokeStyle = grad; ctx.lineWidth = 2 * (devicePixelRatio || 1); ctx.lineJoin = 'round';
+  ctx.beginPath();
+  for (let i = 0; i < v.length; i++) {
+    const x = (i / (v.length - 1)) * c.width;
+    const y = c.height / 2 - (v[i] / max) * (c.height / 2 - 4);
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  }
+  ctx.stroke();
+}
+
+function paintSpark() {
+  const c = $('spark'), ctx = c.getContext('2d');
+  if (!c.width) return;
+  ctx.clearRect(0, 0, c.width, c.height);
+  const d = devicePixelRatio || 1, n = 60;
+  const pts = impacts.slice(-n);
+  for (let i = 0; i < pts.length; i++) {
+    const x = ((i + (n - pts.length)) / (n - 1)) * (c.width - 8 * d) + 4 * d;
+    const y = c.height - 4 * d - Math.min(1, pts[i] / 4.5) * (c.height - 8 * d);
+    ctx.fillStyle = pts[i] > 3 ? '#ffb020' : '#3ddc84'; // green under 3 g, amber over
+    ctx.beginPath(); ctx.arc(x, y, 2.2 * d, 0, 7); ctx.fill();
+  }
+}
+
+function paintBalance(bal) {
+  const l = Math.round(bal * 100), r = 100 - l;
+  $('bal-l').innerHTML = `${l}<small>%</small>`;
+  $('bal-r').innerHTML = `${r}<small>%</small>`;
+  const circ = 2 * Math.PI * 38;
+  $('donut-l').setAttribute('stroke-dasharray', `${(l / 100) * circ} ${circ}`);
+  const bias = Math.abs(l - 50);
+  // left/right labels are an UNCALIBRATED heuristic until a known-limp recording
+  $('bias-note').textContent = bias < 3 ? 'Balanced gait' : `+${bias}% ${l > 50 ? 'left' : 'right'} bias`;
+}
+
+/* ---------- voice ---------- */
+function speak(text, fault) {
+  if (!voiceOn) return;
+  if (voice?.say) { try { voice.say(text, fault); return; } catch {} }
+  try { const u = new SpeechSynthesisUtterance(text); u.rate = 1; speechSynthesis.speak(u); } catch {}
+}
+
+/* ---------- wake lock ---------- */
+async function grabWakeLock() {
+  try { wakeLock = await navigator.wakeLock?.request('screen'); } catch {}
+}
+document.addEventListener('visibilitychange', () => {
+  if (running && document.visibilityState === 'visible') grabWakeLock();
+});
+
+/* ---------- run lifecycle ---------- */
+$('btn-start').onclick = async () => {
+  // everything below must stay inside the tap gesture: sensor permission + audio unlock
+  try {
+    if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission) {
+      const p = await DeviceMotionEvent.requestPermission();
+      if (p !== 'granted' && mode === 'hand') { alert('Motion access is required for hand mode.'); return; }
+    }
+  } catch {}
+  try { voice?.unlock?.(); } catch {}
+  if (!voice) { try { speechSynthesis.speak(new SpeechSynthesisUtterance('')); } catch {} }
+  if (musicOn && music) { try { await music.start(); } catch {} }
+
+  handBuf = []; impacts = []; cueLog = []; recBuf = []; recording = false;
+  $('btn-rec').classList.remove('on');
+  coach = new Coach(mode);
+  session = null;
+  if (sessionMod?.Session) { try { session = new sessionMod.Session(mode, user); } catch { session = null; } }
+  window.addEventListener('devicemotion', onMotion);
+  runT0 = Date.now();
+  running = true;
+  $('cue-line').textContent = 'Listening to your stride…';
+  $('cue-line').classList.remove('flash');
+  setBots('listening');
+  grabWakeLock();
+  show('live');
+};
+
+$('btn-stop').onclick = () => {
+  running = false;
+  window.removeEventListener('devicemotion', onMotion);
+  try { wakeLock?.release(); } catch {}
+  if (music) { try { music.stop(); } catch {} }
+  if (recBuf.length) { lastRecording = recBuf; $('rec-note').textContent = `${recBuf.length} samples buffered — ready to export`; }
+  let run = null;
+  if (session) { try { run = session.stop(); } catch {} }
+  lastRun = run || {
+    // minimal local record when session.js is absent
+    user, mode, t0: runT0, durS: Math.round((Date.now() - runT0) / 1000),
+    cues: cueLog, score: lastMetrics?.score ?? null, km: null,
+  };
+  setBots(cueLog.length ? 'proud' : 'celebrate');
+  show('insights');
+};
+
+$('btn-rec').onclick = () => {
+  recording = !recording;
+  $('btn-rec').classList.toggle('on', recording);
+  if (recording && mode === 'ears') recPollEars();
+};
+// ears-mode recording: poll the head buffer (no event stream to hook)
+let lastRecT = 0;
+function recPollEars() { lastRecT = 0; }
+
+$('btn-export').onclick = () => {
+  const buf = lastRecording || recBuf;
+  if (!buf?.length) return;
+  const blob = new Blob([buf.map((s) => JSON.stringify(s)).join('\n') + '\n'], { type: 'application/x-ndjson' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `fixture-${mode}-${new Date().toISOString().replace(/[:.]/g, '-')}.jsonl`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+/* ---------- cue handling ---------- */
+function onCue(cue) {
+  cueLog.push({ t: Date.now() - runT0, fault: cue.fault, text: cue.text });
+  speak(cue.text, cue.fault);
+  if (session) { try { session.logCue(cue); } catch {} }
+  if (music) { try { music.onCue(); } catch {} }
+  const el = $('cue-line');
+  el.textContent = cue.text;
+  el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+  setBots('alerting');
+}
+
+/* ---------- the app loop: ONE 1 Hz interval (never rAF — throttled webviews) ---------- */
+setInterval(() => {
+  // idle: connection pill + stream status
+  const streaming = !!head?.isStreaming();
+  $('conn-dot').classList.toggle('off', !(streaming || mode === 'hand'));
+  $('conn-text').textContent = streaming ? 'AirPods streaming' : (mode === 'ears' ? 'Waiting for AirPods…' : 'Phone ready');
+  $('stream-dot').classList.toggle('off', !streaming);
+  $('stream-note').textContent = streaming ? 'Receiving head motion' : 'Not streaming';
+
+  if (!running) return;
+
+  // timer
+  const el = Math.floor((Date.now() - runT0) / 1000);
+  $('timer').textContent = `${String(Math.floor(el / 3600)).padStart(2, '0')}:${String(Math.floor((el / 60) % 60)).padStart(2, '0')}:${String(el % 60).padStart(2, '0')}`;
+
+  // ears-mode fixture recording (hand mode records in the motion handler)
+  if (recording && mode === 'ears' && head) {
+    for (const s of head.getWindow(1500)) if (s.t > lastRecT) { recBuf.push(s); lastRecT = s.t; }
+  }
+
+  const samples = sampleWindow(6000);
+  const m = analyze(samples, mode);
+  lastMetrics = m;
+
+  paintDial(m.moving ? m.cadence : 0);
+  paintWave(samples);
+  if (m.moving) {
+    $('score-val').textContent = m.score;
+    $('score-note').textContent = m.score >= 85 ? 'Great form' : m.score >= 65 ? 'Decent form' : 'Needs work';
+    $('score-note').className = 'sub ' + (m.score >= 85 ? 'ok' : m.score >= 65 ? 'warn' : 'bad');
+    $('impact-val').textContent = m.impact.toFixed(1);
+    $('impact-val').className = 'num ' + (m.impact > 3 ? 'warn' : 'ok');
+    impacts.push(m.impact);
+    paintBalance(m.balance ?? 0.5);
+    if (!$('cue-line').classList.contains('flash')) setBots(m.score >= 85 ? 'happy' : 'working');
+  } else {
+    $('score-note').textContent = 'Waiting for movement';
+    $('score-note').className = 'sub';
+    setBots('listening');
+  }
+  paintSpark();
+
+  if (session) {
+    try {
+      session.tick(m);
+      if (session.km != null) {
+        $('dist-val').textContent = session.km.toFixed(2);
+        if (session.km > 0.05) {
+          const secPerKm = el / session.km;
+          $('pace-note').textContent = `${Math.floor(secPerKm / 60)}:${String(Math.round(secPerKm % 60)).padStart(2, '0')} /km`;
+        }
+      }
+    } catch {}
+  }
+  if (music) { try { music.update(m); } catch {} }
+
+  const cue = coach.update(m, Date.now());
+  if (cue) onCue(cue);
+}, 1000);
+
+/* ---------- insights ---------- */
+function fmtDur(s) { return s == null ? '--' : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+const FOCUS = {
+  cadence: ['Overstride', 'Fixing overstride is your fastest win', 'Shorten stride slightly'],
+  bounce: ['Bounce', 'Softer landings will save you energy', 'Run softer, drive forward'],
+  sway: ['Head sway', 'A steadier head means a steadier line', 'Eyes forward, run tall'],
+  asymmetry: ['Balance', 'Evening out your stride protects both legs', 'Even out left and right'],
+};
+function paintInsights() {
+  const run = lastRun;
+  const hasC = !!sessionMod?.renderInsights;
+  $('ins-fallback').style.display = hasC ? 'none' : '';
+  $('insights-body').style.display = hasC ? '' : 'none';
+  if (!hasC) paintFallbackInsights(run);
+  // Track C fills the charts + history; quiet placeholders otherwise
+  if (hasC) {
+    try {
+      const runs = sessionMod.loadRuns?.(user) || [];
+      sessionMod.renderInsights($('insights-body'), run || runs[0], runs[1] || (run ? runs[0] : undefined));
+      paintHistory(runs);
+    } catch {}
+  }
+}
+function paintHistory(runs) {
+  const list = $('history-list');
+  list.innerHTML = runs.length ? '' : '<div class="placeholder">Past runs appear here.</div>';
+  runs.slice(0, 10).forEach((r) => {
+    const d = document.createElement('div');
+    d.className = 'hist-row';
+    d.innerHTML = `<span class="chip">${r.score ?? '--'}</span>
+      <div><div style="font-weight:700">${r.km != null ? r.km.toFixed(2) + ' km' : 'Run'}</div>
+      <div class="sub">${new Date(r.t0).toLocaleString()} · ${r.mode === 'ears' ? 'Ears' : 'Hand'}</div></div>`;
+    d.onclick = () => { lastRun = r; paintInsights(); };
+    list.appendChild(d);
+  });
+}
+function paintFallbackInsights(run) {
+  // dominant fault from the cue log names the hero headline
+  let dom = null;
+  if (run?.cues?.length) {
+    const counts = {};
+    for (const c of run.cues) counts[c.fault] = (counts[c.fault] || 0) + 1;
+    dom = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+  }
+  const hero = $('hero-card');
+  if (!run) {
+    hero.classList.remove('green');
+    $('hero-eyebrow').textContent = 'Form focus';
+    $('hero-line').textContent = 'Finish a run to see your analysis.';
+  } else if (dom) {
+    hero.classList.remove('green');
+    $('hero-eyebrow').textContent = FOCUS[dom][0];
+    $('hero-line').textContent = FOCUS[dom][1];
+    $('focus-val').textContent = FOCUS[dom][2];
+  } else {
+    hero.classList.add('green');
+    $('hero-eyebrow').textContent = 'Clean run';
+    $('hero-line').textContent = 'No faults. Your form held all the way.';
+    $('focus-val').textContent = 'Keep doing what you did';
+  }
+  if (run) {
+    $('ins-score').textContent = run.score ?? '--';
+    $('sum-km').textContent = run.km != null ? run.km.toFixed(2) : '--';
+    $('sum-dur').textContent = fmtDur(run.durS);
+    $('sum-cues').textContent = run.cues?.length ?? 0;
+    $('sum-mode').textContent = run.mode === 'ears' ? 'Ears' : 'Hand';
+  }
+}
+paintInsights();
+</script>
+</body>
+</html>

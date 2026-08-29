@@ -1,0 +1,8 @@
+{
+  "name": "form-coach",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node replay.js"
+  }
+}
